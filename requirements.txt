@@ -1,0 +1,10 @@
+customtkinter
+pymupdf4llm
+markitdown[docx]
+ebooklib
+html2text
+pypandoc
+weasyprint
+pdf2docx
+tkinterdnd2
+docx2pdf

@@ -1,0 +1,46 @@
+# Dev-tool caches & assistant scratch folders
+.tokensave/
+.codegraph/
+.claude/
+.serena/
+.aider*
+
+# Linter / type-checker / test caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
+
+# Build output
+dist/
+*.build/
+*.dist/
+*.onefile-build/
+
+# Vendor binaries (large — users run scripts/install_pandoc.py)
+vendor/pandoc/pandoc.exe
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.eggs/
+*.egg-info/
+.env
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user

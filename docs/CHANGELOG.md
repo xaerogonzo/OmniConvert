@@ -2,6 +2,89 @@
 
 All notable changes to OmniConvert are documented here.
 
+## [0.3.0] — 2026-08-30
+
+### Added
+- **Cancel a running batch** — the Convert button becomes Cancel while a batch is
+  active. Cancellation is checked *between* files: the file currently converting
+  finishes first, because abandoning it mid-flight would strand PyMuPDF buffers
+  or a live MS Word COM instance. Logs `[!] Cancelled: N converted, M failed,
+  K not started`.
+- **Overall progress bar** above the Convert button, driven by the existing
+  per-file markers.
+- **"Clear" and "Open Folder" buttons** in the toolbar.
+- **Test suite** — 91 tests under `tests/`, all headless. Covers the path
+  helpers, converter dispatch, the DOCX image path, the PDF renderer, batch
+  orchestration and cancellation, the queue model, and a window-construction
+  smoke test. Run with `python -m pytest`.
+- `requirements-dev.txt` for the test dependencies.
+
+### Changed
+- **The queue now accumulates instead of being replaced.** Dropping or browsing
+  appends to the existing queue and skips files already present (deduplicated on
+  resolved path, case-insensitively). Use Clear to empty it.
+- **MD → PDF now renders with PyMuPDF's Story engine instead of weasyprint.**
+  weasyprint requires the GTK/Pango DLLs on Windows, which cannot be bundled into
+  the Nuitka one-file build — meaning `OmniConvert.exe` could never produce a PDF
+  on a machine that lacked them, and PDF output failed outright wherever GTK was
+  absent. PyMuPDF is already a dependency, needs no system libraries, and renders
+  identically everywhere. Trade-off: the text column is now set by the page
+  geometry rather than `max-width`, and `page-break-after: avoid` on headings is
+  no longer honoured.
+- **`weasyprint` removed from `requirements.txt`**; `mammoth` and `pymupdf` added
+  as explicit direct dependencies. All dependencies are now version-pinned.
+- **`app.py` split into an `omniconvert.ui` package** — `queue_model.py` (Tk-free
+  queue state), `queue_panel.py`, `controls_panel.py`, `log_panel.py` and
+  `constants.py`. `app.py` shrank from 686 to 489 lines and now owns only the
+  root window, drop bindings, pipeline handoff and log dispatch.
+- The `_{stem}_{ext}_cover.png` naming convention is now derived from
+  `pipeline._intermediate_paths()` rather than re-implemented in the GUI.
+- **The Nuitka build now produces a working executable.** Three faults, all
+  pre-existing and inherited from the build template, meant `OmniConvert.exe` had
+  been broken since v0.2.0:
+  - `numpy` and `pandas` were on the `--nofollow-import-to` exclusion list while
+    being genuinely required (`pdf2docx` reaches numpy through `cv2`; `markitdown`
+    imports pandas at module load). The exe raised `ImportError` on **every DOCX
+    source** and on **High-Fidelity PDF -> DOCX**. Both are now bundled.
+  - `sympy` was *not* excluded, though nothing uses it - it is reached only via
+    `pdf2docx` -> `fontTools` -> `fontTools.misc.symfont`. Nuitka compiled all
+    ~1000 of its modules: 5958 object files, 3.2 GB, and a build that stalled
+    before linking. Now excluded.
+  - `build.ps1` is UTF-8 without a BOM and contained two em-dashes, but
+    `build.bat` runs it under Windows PowerShell 5.1, which decodes BOM-less
+    files as cp1252. The em-dash became three characters ending in U+201D, which
+    PowerShell honours as a string delimiter, so the script failed to parse. The
+    script is now pure ASCII, and `build.bat` propagates the exit code instead of
+    always returning 0 - which is why the parse failure previously looked like a
+    successful build.
+- Removed `--include-package=pystray` from the Nuitka build — it was never
+  imported by OmniConvert and only added bulk to the exe.
+
+### Fixed
+- **DOCX sources lost every inline image.** `markitdown` delegates to `mammoth`,
+  whose default handler inlines images as base64 data URIs — so the hub markdown
+  ballooned by ~33% and no `_img/` folder was ever created. `_from_docx` now
+  drives mammoth directly with its own image handler, writing real files to
+  `{stem}_docx_img/` and emitting URL-encoded relative references. Word equations
+  still become LaTeX via markitdown's OMML pre-pass.
+- **Pandoc output silently dropped every image, for all source formats.**
+  `--resource-path` pointed at the image folder, but markdown references already
+  contain the folder name, so pandoc looked for `img_dir/img_dir/x.png`. It now
+  points at the markdown's parent directory — the same rule the PDF path follows.
+  This affected EPUB and DOCX output from PDF and EPUB sources too, not just DOCX.
+- **"Preserve Headers" and "Strict Table Grid" did nothing.** Both were
+  pre-selected and read by no code. "Strict Table Grid" is now wired to the PDF
+  table CSS (ruled borders and a shaded header band when on, borderless when
+  off). "Preserve Headers" was removed — every parser preserves headings
+  unconditionally, so there was no behaviour for it to select.
+- `sanitize_stem()` prefixed `COM0` and `LPT0`, which Windows does not reserve.
+  The device names run 1–9, as the docstring always claimed.
+- `__version__` said `0.1.0` while the changelog was at 0.2.0.
+- The High-Fidelity DOCX → PDF fallback caught `(ImportError, Exception)` — a
+  redundant tuple that reported every bug as "MS Word unavailable". It now
+  catches `Exception` and logs the actual message.
+- Queue rows no longer raise if a file is deleted between queueing and rendering.
+
 ## [0.2.0] — 2026-05-22
 
 ### Added

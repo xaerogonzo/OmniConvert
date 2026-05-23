@@ -8,6 +8,10 @@ OmniConvert is a single-process Python desktop application. The GUI runs on the 
 ┌─────────────────────────────────────────────────────────┐
 │  main.py  (entry point — adds src/ to sys.path)         │
 │     └── OmniConvertApp  (CustomTkinter, main thread)    │
+│           ├── ui/queue_model.py   (Tk-free queue state) │
+│           ├── ui/queue_panel.py   (cover + queue rows)  │
+│           ├── ui/controls_panel.py(format/mode/progress)│
+│           └── ui/log_panel.py     (log textbox)         │
 │           │                                             │
 │           │  spawns daemon thread on Convert click      │
 │           ▼                                             │
@@ -26,7 +30,7 @@ OmniConvert is a single-process Python desktop application. The GUI runs on the 
 Every format is first reduced to Markdown (the hub), then compiled to the target format from that Markdown source. This keeps the conversion matrix linear — N parsers + N generators instead of N² direct converters.
 
 ```
-  .pdf   ─┐                                   ┌─► .pdf  (weasyprint)
+  .pdf   ─┐                                   ┌─► .pdf  (pymupdf)   
   .docx  ─┤──► to_markdown ──► [ .md + imgs ] ─┤──► .docx (pandoc)
   .epub  ─┤                                   ├──► .epub (pandoc)
   .txt   ─┘                                   ├──► .txt  (pandoc)
@@ -120,7 +124,7 @@ Mitigations baked into the pipeline:
 | Format | Library | Notes |
 |--------|---------|-------|
 | PDF | `pymupdf4llm` | Column-aware, footnote-aware; `write_images=True` extracts all embedded images |
-| DOCX | `markitdown` | Microsoft's MarkItDown; handles tables and inline images |
+| DOCX | `mammoth` + `markitdown` | mammoth → HTML with our own image handler (real files in `_img/`), then markitdown for HTML → Markdown so table/heading fidelity is kept. markitdown's OMML pre-pass still turns Word equations into LaTeX. |
 | EPUB | `ebooklib` + `html2text` | Iterates OPF spine in order; saves embedded images to `_img/` |
 | TXT | built-in | Passthrough copy |
 | MD | built-in | Passthrough copy |
@@ -129,8 +133,8 @@ Mitigations baked into the pipeline:
 
 | Format | Engine | Notes |
 |--------|--------|-------|
-| PDF | `weasyprint` (PRIMARY) | MD → HTML via `markdown` lib → PDF; `base_url` resolves image paths |
-| DOCX | `pypandoc` → pandoc | `--resource-path` points to `_img/` folder |
+| PDF | `pymupdf` Story (PRIMARY) | MD → HTML via `markdown` lib → PDF; `archive` resolves image paths |
+| DOCX | `pypandoc` → pandoc | `--resource-path` points to the `.md`'s parent |
 | EPUB | `pypandoc` → pandoc | `--epub-cover-image` attaches extracted cover |
 | TXT | `pypandoc` → pandoc | `plain` format |
 | MD | built-in | Copy of hub file |
@@ -156,8 +160,8 @@ OmniConvert
 ├── markitdown[docx]       DOCX → Markdown
 ├── ebooklib               EPUB parse
 ├── html2text              EPUB XHTML → Markdown
-├── markdown               MD → HTML (weasyprint path)
-├── weasyprint             HTML → PDF
+├── markdown               MD → HTML (PDF path)
+├── mammoth                DOCX → HTML with file-backed images
 ├── pypandoc               Python wrapper for pandoc CLI
 │   └── pandoc             System binary (vendor/pandoc/pandoc.exe)
 └── pdf2docx               High-Fidelity PDF → DOCX
@@ -210,3 +214,103 @@ name = re.sub(r"\s+", " ", name).strip()  # collapse whitespace
 name = name.strip(". ")                 # no leading/trailing dots or spaces
 # Prefix reserved names: CON, PRN, AUX, NUL, COM1-9, LPT1-9
 ```
+
+---
+
+## Image Reference Contract
+
+Every parser writes image references that **already include the image folder
+name** — `![](Draft_pdf_img/x.png)`, not `![](x.png)`. Every output generator
+must therefore resolve them against the directory **containing the `.md`**, never
+against the image folder itself:
+
+| Generator | Setting | Value |
+|---|---|---|
+| PDF (`pymupdf` Story) | `archive=` | `md_path.parent` |
+| DOCX / EPUB / TXT (pandoc) | `--resource-path=` | `md_path.parent` |
+
+Pointing either at `img_dir` makes the reference resolve one level too deep
+(`img_dir/img_dir/x.png`). WeasyPrint surfaced this as visibly broken images in
+v0.2.0 and it was fixed there; pandoc failed the same way but only emitted a
+`Could not fetch resource` warning to stderr, so EPUB and DOCX output silently
+shipped without images until v0.3.0. **If you add an output generator, this table
+is the rule to follow.**
+
+Stems can contain spaces, so DOCX references are percent-encoded
+(`Smoke%20Doc_docx_img/img_001.png`). A raw space would terminate the URL early
+in Markdown and break the reference.
+
+---
+
+## Why PyMuPDF and not WeasyPrint
+
+WeasyPrint needs the GTK/Pango shared libraries at import time. On Windows those
+are a separate several-hundred-megabyte system install (MSYS2 `pacman -S
+mingw-w64-x86_64-pango`, or `WEASYPRINT_DLL_DIRECTORIES` pointing at them).
+Nuitka cannot bundle libraries that are not present, so an `OmniConvert.exe`
+built against WeasyPrint could not produce a PDF on any machine lacking GTK — and
+on such a machine `from weasyprint import HTML` raises `OSError` before any
+conversion starts.
+
+PyMuPDF is already a hard dependency (via `pymupdf4llm`), needs no system
+libraries, and bundles cleanly. Its `Story` renderer supports a CSS subset.
+Verified as honoured: font families, table borders and header fills, embedded
+images, code blocks. Verified as *not* honoured: `max-width` / `margin: auto`
+(the text column is set by the placement rectangle in `_to_pdf` instead) and
+`page-break-after`.
+
+---
+
+## Cancellation
+
+`run_batch` accepts an optional `threading.Event` and checks it **between files
+only**, then posts `__BATCH_CANCELLED__` instead of `__BATCH_DONE__`.
+
+This is deliberate. Aborting a file mid-conversion would abandon a thread holding
+PyMuPDF's C-allocated buffers or a live MS Word COM instance — precisely what the
+`cv.close()`, `gc.collect()` and `CoUninitialize()` rules above exist to prevent.
+A long PDF already inside `pdf2docx` therefore finishes before the batch stops,
+and the GUI says so (`Cancel requested — finishing the current file first…`).
+
+---
+
+## Nuitka Build Configuration
+
+The build (`build.ps1`, launched by `build.bat`) compiles a one-file
+`dist\OmniConvert.exe`. Three rules keep it working:
+
+**1. Do not exclude what the app actually imports.** The exclusion block began as
+generic "Anaconda bloat" filtering and was wrong for this project:
+
+| Package | Reached via | Status |
+|---|---|---|
+| `numpy` | `pdf2docx` -> `cv2` | **must be bundled** |
+| `pandas` | `markitdown` (at module load) | **must be bundled** |
+| `cv2` | `pdf2docx` | **must be bundled** |
+| `sympy` | `pdf2docx` -> `fontTools` -> `fontTools.misc.symfont` | excluded - unused |
+| `scipy`, `matplotlib`, `sklearn`, `IPython`, `notebook` | not reached | excluded |
+
+Excluding `numpy` and `pandas` produced an `.exe` that raised `ImportError` on
+**every DOCX source** and on **High-Fidelity PDF -> DOCX**. That shipped from
+v0.2.0 and went unnoticed because the build never survived long enough to emit a
+binary. `tests/test_build_script.py` now asserts the include and exclude sets do
+not contradict each other.
+
+Excluding `sympy` matters in the other direction: without it Nuitka compiles all
+~1000 sympy modules for the sake of one unused symbolic-font-math helper - 5958
+object files, 3.2 GB, and a build that stalls before linking.
+
+**2. `build.ps1` must stay pure ASCII.** `build.bat` invokes Windows PowerShell
+5.1, which reads BOM-less files as cp1252. A UTF-8 em-dash decodes to three
+characters ending in U+201D, which PowerShell accepts as a string delimiter - so
+the enclosing string closes early and the script fails to parse. This silently
+broke `.\build.bat` until v0.3.0.
+
+**3. `build.bat` must propagate the exit code.** It previously ended with `pause`
+and returned 0 unconditionally, so a script that failed to parse still looked
+like a successful build.
+
+**Drag-and-drop depends on a data-dir flag**, not just a package inclusion:
+`--include-data-dir=<tkinterdnd2>/tkdnd=tkinterdnd2/tkdnd`. Without it DnD breaks
+only in the frozen exe, never when running from source - so always test a drop on
+the built binary.

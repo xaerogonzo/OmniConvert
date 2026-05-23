@@ -1,10 +1,36 @@
-customtkinter
-pymupdf4llm
-markitdown[docx]
-ebooklib
-html2text
-pypandoc
-weasyprint
-pdf2docx
-tkinterdnd2
-docx2pdf
+# Pinned to the versions this release was built and tested against.
+# Bump deliberately: pymupdf4llm and pymupdf must stay in lockstep.
+customtkinter==5.2.2
+pillow==11.1.0
+
+# Input parsers
+pymupdf4llm==1.27.2.3      # PDF -> Markdown (pulls pymupdf)
+pymupdf==1.27.2.3          # used directly by assets.py and from_markdown.py
+markitdown[docx]==0.1.5    # HTML -> Markdown for the DOCX path
+mammoth==1.11.0            # DOCX -> HTML with our own image handler
+ebooklib==0.20
+html2text==2025.4.15
+
+# Output generators
+markdown==3.10.2           # Markdown -> HTML for the PDF path
+pypandoc==1.17             # DOCX / EPUB / TXT via the vendored pandoc binary
+
+# High-Fidelity paths
+pdf2docx==0.5.13           # PDF -> DOCX
+docx2pdf==0.1.8            # DOCX -> PDF via MS Word COM (pulls pywin32)
+
+# GUI drag-and-drop
+tkinterdnd2==0.4.3
+
+# ---------------------------------------------------------------------------
+# Transitive but REQUIRED at runtime - pip resolves these, but the Nuitka build
+# must not exclude them (build.ps1):
+#   numpy   <- pdf2docx -> cv2        (High-Fidelity PDF -> DOCX)
+#   pandas  <- markitdown             (imported at module load, every DOCX)
+#   cv2     <- pdf2docx
+# Excluding numpy/pandas produced an .exe that raised ImportError on every DOCX
+# source and on High-Fidelity PDF -> DOCX. See docs/ARCHITECTURE.md.
+#
+# sympy is also pulled in (pdf2docx -> fontTools -> fontTools.misc.symfont) but
+# is NOT used by anything here; build.ps1 excludes it deliberately.
+# ---------------------------------------------------------------------------

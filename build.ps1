@@ -131,18 +131,35 @@ New-Item -ItemType Directory -Force -Path $DIST | Out-Null
 $guiArgs = @(
     "-m", "nuitka",
     "--onefile",
+    # ---- Memory guards (do not remove) ---------------------------------------
+    # pymupdf/mupdf.py is a 65k-line SWIG binding that Nuitka expands into a
+    # ~118 MB C file - 3.4x larger than anything else in the build. Nuitka
+    # defaults --jobs to the full CPU count, so that giant translation unit
+    # competes with N-1 other compiler processes for RAM. When it loses, zig cc
+    # is OOM-killed silently: no error, no process, and scons waits forever.
+    # Two builds wedged exactly there before these flags were added.
+    "--low-memory",
+    "--jobs=4",
+    "--lto=no",
     "--windows-console-mode=disable",
     "--enable-plugin=tk-inter",
     "--include-package=PIL",
-    "--include-package=pystray",
     # ---- Anaconda bloat exclusions (safe to remove if not using Anaconda) ----
     # If building from an Anaconda or conda env, Nuitka traces into numpy,
     # scipy, pandas etc. even if your app never imports them, bundling ~450 MB
     # of Intel MKL DLLs and scientific libraries. These flags block that.
     # Remove any package your app actually uses.
-    "--nofollow-import-to=numpy",
+    #
+    # numpy and pandas are deliberately NOT excluded: pdf2docx reaches numpy
+    # through cv2, and markitdown imports pandas at module load. Excluding them
+    # produced an .exe that raised ImportError on every DOCX source and on
+    # High-Fidelity PDF -> DOCX. See docs/ARCHITECTURE.md.
+    # sympy is reached only via fontTools/misc/symfont.py (symbolic font math,
+    # which nothing here uses), pulled in by pdf2docx -> fontTools. Without this
+    # exclusion Nuitka compiles all ~1000 sympy modules: 3.2 GB of object files
+    # and a build that wedges before it links.
+    "--nofollow-import-to=sympy",
     "--nofollow-import-to=scipy",
-    "--nofollow-import-to=pandas",
     "--nofollow-import-to=matplotlib",
     "--nofollow-import-to=sklearn",
     "--nofollow-import-to=IPython",
@@ -154,23 +171,23 @@ $guiArgs = @(
     "--include-package=customtkinter",
     "--include-package=pymupdf",
     "--include-package=markitdown",
+    "--include-package=mammoth",
     "--include-package=ebooklib",
     "--include-package=pdf2docx",
-    "--include-package=weasyprint",
     "--include-package=tkinterdnd2",
     "--include-package=docx2pdf",
     "--output-filename=OmniConvert.exe"
 )
 
 # tkinterdnd2 bundles a tkdnd/ folder of TCL extension binaries that Nuitka
-# misses by default — without this data-dir inclusion, the .exe launches but
+# misses by default - without this data-dir inclusion, the .exe launches but
 # drag-and-drop silently does nothing.
 $tkdndPath = & python -c "import tkinterdnd2, os; print(os.path.join(os.path.dirname(tkinterdnd2.__file__), 'tkdnd'))" 2>$null
 if ($LASTEXITCODE -eq 0 -and (Test-Path $tkdndPath)) {
     Write-Host "  [tkdnd] bundling $tkdndPath" -ForegroundColor DarkGray
     $guiArgs += "--include-data-dir=$tkdndPath=tkinterdnd2/tkdnd"
 } else {
-    Write-Host "  [WARN] tkinterdnd2 tkdnd folder not found — DnD will break in .exe" -ForegroundColor Yellow
+    Write-Host "  [WARN] tkinterdnd2 tkdnd folder not found - DnD will break in .exe" -ForegroundColor Yellow
 }
 
 # ---- CLI build (no GUI plugins) ---------------------------------------------

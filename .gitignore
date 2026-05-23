@@ -70,3 +70,7 @@ tests/**/*.docx
 tests/**/*.epub
 # Allow tests/fixtures/ to track small sample inputs if you add any
 !tests/fixtures/**
+
+
+# tokensave MCP binding (TokenSave Manager) — machine-local by choice
+.mcp.json

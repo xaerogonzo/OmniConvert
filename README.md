@@ -15,6 +15,13 @@ python scripts/install_pandoc.py
 python main.py
 ```
 
+Run the tests with:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
 ## Supported Formats
 
 | | PDF | DOCX | EPUB | MD | TXT |
@@ -27,7 +34,7 @@ python main.py
 
 ## Conversion Modes
 
-**Standard** — Hub-and-spoke through Markdown. Preserves text structure, headings, tables, and all inline images. Works for all 20 format pairs.
+**Standard** — Hub-and-spoke through Markdown. Preserves text structure, headings, tables, and all inline images. Works for all 20 format pairs. PDF output is rendered by PyMuPDF and needs no pandoc; DOCX / EPUB / TXT output needs the portable pandoc.
 
 **High-Fidelity** — Layout-preserving paths that bypass the Markdown hub:
 - **PDF → DOCX** via `pdf2docx` (no pandoc required)
@@ -41,8 +48,11 @@ python main.py
 - **"Add Folder…"** — recursive scan option for deep folder hierarchies
 - All inline images extracted and re-embedded in the output
 - Portable pandoc — no system-wide install, no admin rights
+- **Cancel** a running batch at any point — the current file finishes, the rest are skipped
+- Live progress bar and per-file status icons
 - Intermediate Markdown files kept on disk (AI pipeline friendly)
 - Windows path safety — handles colons, reserved names, and same-stem collisions across formats
+- No system libraries required — everything ships in the wheel or the vendored pandoc
 
 ## Building a Standalone Executable
 
@@ -58,7 +68,7 @@ Produces `dist\OmniConvert.exe` via Nuitka — no Python install required to run
 src/omniconvert/    Core application package
 scripts/            Setup and utility scripts
 docs/               Architecture and development docs
-tests/              Test suite (future)
+tests/              Test suite (pytest, headless)
 vendor/pandoc/      Portable pandoc binary (after running install_pandoc.py)
 dist/               Nuitka build output (gitignored)
 ```

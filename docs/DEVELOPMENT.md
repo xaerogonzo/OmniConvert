@@ -21,6 +21,19 @@ python scripts/install_pandoc.py
 python main.py
 ```
 
+## Testing
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest
+```
+
+The whole suite is headless and takes a few seconds. Fixtures (DOCX, PNG) are
+*generated* at test time rather than committed, so they cannot drift from the
+libraries that produce them. `tests/test_gui_smoke.py` does build the real
+window; it shares one Tk root across the module (Tk tolerates only one per
+process) and skips cleanly where no display is available.
+
 ## Running Without Pandoc
 
 PDF output and High-Fidelity PDF → DOCX work without pandoc. The app shows an amber warning banner for the disabled targets (DOCX, EPUB, TXT in Standard mode). This is expected during development before running `install_pandoc.py`.
@@ -39,6 +52,13 @@ src/
       from_markdown.py      All output generators from Markdown
       hifi.py               High-fidelity PDF → DOCX via pdf2docx
       assets.py             Cover image extraction (PDF / DOCX / EPUB)
+    ui/
+      __init__.py
+      constants.py          Shared formats, status icons, row colours
+      queue_model.py        Tk-free queue state (add/dedup/select/status)
+      queue_panel.py        Cover preview + scrollable queue rows
+      controls_panel.py     Format, mode, options, progress bar, convert button
+      log_panel.py          Log textbox
 
 scripts/
   install_pandoc.py         One-time portable pandoc downloader
@@ -48,7 +68,7 @@ docs/
   DEVELOPMENT.md            This file
   CHANGELOG.md              Version history
 
-tests/                      Test suite (future)
+tests/                      Test suite (pytest)
 vendor/pandoc/              Portable pandoc binary (after running install script)
 dist/                       Nuitka build output (gitignored)
 ```
@@ -65,13 +85,14 @@ dist/                       Nuitka build output (gitignored)
 
 1. Add a `_from_{fmt}` function in `src/omniconvert/converters/to_markdown.py`
 2. Add the new extension to the `convert()` dispatcher
-3. Add it to `SUPPORTED` in `src/omniconvert/app.py`
+3. Add it to `SUPPORTED` in `src/omniconvert/ui/constants.py`
 4. Add it to the `filetypes` list in `_browse_file()`
 
 ## Adding a New Output Format
 
 1. Add a case in `src/omniconvert/converters/from_markdown.py::convert()`
-2. Add the format string to `FORMATS` in `src/omniconvert/app.py`
+2. Add the format string to `FORMATS` in `src/omniconvert/ui/constants.py`
+3. If it needs pandoc, add it to `PANDOC_TARGETS` there too
 
 ## Build (Nuitka)
 
@@ -87,9 +108,22 @@ Requirements before building:
 pip install nuitka ordered-set zstandard
 ```
 
+**Build rules that are easy to break** (see docs/ARCHITECTURE.md for the full
+reasoning):
+
+- `build.ps1` must stay **pure ASCII**. `build.bat` runs it under Windows
+  PowerShell 5.1, which reads BOM-less files as cp1252; a stray non-ASCII
+  character decodes into a smart quote and silently breaks parsing.
+- Never add `numpy`, `pandas` or `cv2` to `--nofollow-import-to`. They arrive
+  transitively but are required at runtime; excluding them yields an exe that
+  fails on DOCX and on High-Fidelity PDF -> DOCX.
+- Keep `sympy` excluded, or the build compiles ~1000 unused modules and stalls.
+- If a build exceeds ~2 GB under `dist/` or stops writing files for several
+  minutes, stop it and check which package is being compiled rather than waiting.
+
 See `build.ps1` for the full flag list. Key flags already configured:
 - `--enable-plugin=tk-inter` — bundles tkinter
-- `--include-package=customtkinter`, `pymupdf`, `markitdown`, `ebooklib`, `pdf2docx`, `weasyprint`
+- `--include-package=customtkinter`, `pymupdf`, `markitdown`, `mammoth`, `ebooklib`, `pdf2docx`
 - `--nofollow-import-to=numpy,scipy,pandas,...` — excludes Anaconda scientific stack
 
 ## ebooklib Warnings
@@ -108,6 +142,7 @@ Do not remove these — they would flood the GUI log textbox.
 - **Convert button** → only ever spawns `threading.Thread(daemon=True)`. Never calls `pipeline.run()` on the main thread.
 - **pipeline.run()** → posts strings to `queue.Queue`. Never touches tkinter widgets directly.
 - **_poll_log()** → called via `self.after(100, ...)` on the main thread. Drains the queue and updates widgets.
+- **Cancellation** → `run_batch` checks a `threading.Event` between files only. Never abort a file in flight: it would strand PyMuPDF buffers or a live Word COM instance, defeating the file-lock and `CoUninitialize` rules.
 
 ## File Lock Rule (High-Fidelity Mode)
 

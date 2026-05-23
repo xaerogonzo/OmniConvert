@@ -11,6 +11,7 @@ Markers the GUI watches for:
     __FILE_DONE__<idx>      batch: file idx succeeded
     __FILE_ERROR__<idx>     batch: file idx failed (batch continues)
     __BATCH_DONE__          batch run completed (success+failure totals already logged)
+    __BATCH_CANCELLED__     batch stopped early because the cancel Event was set
 """
 
 import gc
@@ -33,6 +34,7 @@ class ConvertParams:
     target_fmt: str          # "pdf" | "docx" | "epub" | "md" | "txt"
     mode: Mode
     extract_cover: bool
+    strict_tables: bool = True   # ruled table borders on the PDF path
 
 
 def sanitize_stem(name: str) -> str:
@@ -42,7 +44,8 @@ def sanitize_stem(name: str) -> str:
     name = name.replace(":", "-")
     name = re.sub(r"\s+", " ", name).strip()
     name = name.strip(". ")
-    if re.match(r"^(CON|PRN|AUX|NUL|COM\d|LPT\d)$", name, re.IGNORECASE):
+    # COM0 / LPT0 are NOT reserved on Windows - the device names run 1-9.
+    if re.match(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$", name, re.IGNORECASE):
         name = "_" + name
     return name
 
@@ -115,10 +118,11 @@ def _run_single(params: ConvertParams, log_q: Queue) -> Path:
                     assets.extract_cover(src, log_q, out=cover_path_intermediate)
                 log_q.put("[✓] Conversion complete.")
                 return out_path
-            except (ImportError, Exception) as exc:
+            except Exception as exc:
                 # MS Word missing or COM failed — degrade to Standard
-                log_q.put(f"[!] MS Word path unavailable ({type(exc).__name__}) "
-                          f"— falling back to weasyprint (lower fidelity)")
+                log_q.put(f"[!] MS Word path unavailable "
+                          f"({type(exc).__name__}: {exc}) "
+                          f"— falling back to the Standard path (lower fidelity)")
                 # fall through to Standard path below
 
         # ---- Standard hub-and-spoke path ---------------------------------
@@ -140,7 +144,10 @@ def _run_single(params: ConvertParams, log_q: Queue) -> Path:
             log_q.put(f"[✓] Done: {out_path.name}")
             return out_path
 
-        from_markdown.convert(md_path, img_dir, cover_path, fmt, out_path, log_q)
+        from_markdown.convert(
+            md_path, img_dir, cover_path, fmt, out_path, log_q,
+            strict_tables=params.strict_tables,
+        )
         log_q.put("[✓] Conversion complete.")
         return out_path
     finally:
@@ -179,17 +186,34 @@ def run_batch(
     mode: Mode,
     extract_cover: bool,
     log_q: Queue,
+    strict_tables: bool = True,
+    cancel: threading.Event | None = None,
 ) -> None:
     """Process a list of source files sequentially.
 
     Continues on individual failures. Posts per-file markers
     (__FILE_START__N / __FILE_DONE__N / __FILE_ERROR__N) and a final
     __BATCH_DONE__ marker when complete.
+
+    If `cancel` is supplied, it is checked BETWEEN files. Cancellation is
+    deliberately not mid-file: aborting a file in flight would mean abandoning a
+    thread that holds PyMuPDF buffers or a live MS Word COM instance, which is
+    exactly what the file-lock and CoUninitialize rules exist to prevent. A file
+    already being converted therefore finishes before the batch stops, and
+    __BATCH_CANCELLED__ is posted instead of __BATCH_DONE__.
     """
     succeeded = failed = 0
     total = len(sources)
 
     for i, src in enumerate(sources):
+        if cancel is not None and cancel.is_set():
+            log_q.put(
+                f"[!] Cancelled: {succeeded} converted, {failed} failed, "
+                f"{total - i} not started"
+            )
+            log_q.put("__BATCH_CANCELLED__")
+            return
+
         log_q.put(f"__FILE_START__{i}")
         log_q.put(f"[*] === ({i + 1}/{total}) {src.name} ===")
         params = ConvertParams(
@@ -197,6 +221,7 @@ def run_batch(
             target_fmt=target_fmt,
             mode=mode,
             extract_cover=extract_cover,
+            strict_tables=strict_tables,
         )
         try:
             _run_single(params, log_q)
@@ -217,11 +242,14 @@ def start_batch(
     mode: Mode,
     extract_cover: bool,
     log_q: Queue,
+    strict_tables: bool = True,
+    cancel: threading.Event | None = None,
 ) -> threading.Thread:
     """Spawn a daemon thread and start a batch run."""
     t = threading.Thread(
         target=run_batch,
-        args=(sources, target_fmt, mode, extract_cover, log_q),
+        args=(sources, target_fmt, mode, extract_cover, log_q, strict_tables,
+              cancel),
         daemon=True,
     )
     t.start()

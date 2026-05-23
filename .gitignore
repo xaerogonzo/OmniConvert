@@ -21,8 +21,18 @@ dist/
 *.dist/
 *.onefile-build/
 
-# Vendor binaries (large — users run scripts/install_pandoc.py)
-vendor/pandoc/pandoc.exe
+# Vendor binaries — entire folder is install-time artifacts (users run
+# scripts/install_pandoc.py to populate it). COPYRIGHT.txt is regenerated
+# on every install, so no loss from not tracking it.
+vendor/
+
+# Pandoc installer leftovers — pypandoc.download_pandoc() drops the MSI
+# in CWD before extracting. install_pandoc.py cleans it up, but ignore
+# in case anyone downloads manually or runs the installer from elsewhere.
+pandoc-*.msi
+pandoc-*-windows-*.zip
+pandoc-*-linux-*.tar.gz
+pandoc-*-macOS.zip
 
 # Python
 __pycache__/
@@ -44,3 +54,19 @@ desktop.ini
 .idea/
 *.suo
 *.user
+
+# Test conversion artifacts — running converters in tests/ leaves
+# intermediate Markdown, image folders, covers, and outputs behind.
+# Keep the tests/ folder itself tracked (that's where test CODE lives).
+tests/**/*_pdf.md
+tests/**/*_docx.md
+tests/**/*_epub.md
+tests/**/*_txt.md
+tests/**/*_md.md
+tests/**/*_img/
+tests/**/*_cover.png
+tests/**/*.pdf
+tests/**/*.docx
+tests/**/*.epub
+# Allow tests/fixtures/ to track small sample inputs if you add any
+!tests/fixtures/**

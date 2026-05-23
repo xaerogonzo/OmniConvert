@@ -69,6 +69,18 @@ def main() -> None:
         print("[FAIL] pandoc.exe not found after download. Check vendor/pandoc/ manually.")
         sys.exit(1)
 
+    # Clean up the MSI / archive that pypandoc dropped in CWD before extracting
+    cwd = Path.cwd()
+    leftover_patterns = ["pandoc-*.msi", "pandoc-*-windows-*.zip",
+                          "pandoc-*-linux-*.tar.gz", "pandoc-*-macOS.zip"]
+    for pat in leftover_patterns:
+        for leftover in cwd.glob(pat):
+            try:
+                leftover.unlink()
+                print(f"[*] Cleaned up installer leftover: {leftover.name}")
+            except OSError as exc:
+                print(f"[!] Could not delete {leftover.name}: {exc}")
+
     # Smoke test
     os.environ["PATH"] = str(TARGET) + ";" + os.environ.get("PATH", "")
     try:

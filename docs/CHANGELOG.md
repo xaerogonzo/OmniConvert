@@ -4,6 +4,18 @@ All notable changes to OmniConvert are documented here.
 
 ## [0.4.0] — 2026-08-30
 
+### Security
+- **pillow 11.1.0 -> 12.3.0.** Clears 17 advisories. Most need APIs OmniConvert
+  never calls (ImageFilter, paste/crop, ImageCms, Pillow's own PDF and font
+  parsers, `Image.show()`), but six are reachable: `assets.py` calls
+  `Image.open()` on image bytes lifted straight out of user-supplied PDF, DOCX
+  and EPUB files, and format detection is automatic — so an embedded PSD, FITS,
+  JPEG2000 or GD image reaches those decoders. Being an offline desktop app does
+  not help here: the documents *are* the untrusted input.
+- **pytest 8.4.2 -> 9.0.3** (CVE-2025-71176, tmpdir handling). The pin was also
+  stale — 9.0.3 was already installed, so the suite had never actually been run
+  against the pinned version.
+
 ### Added
 - **Choose where output goes.** "Output to…" sets an output *root*: the converted
   file, the hub `.md`, the `_img/` folder and the cover all land there together.

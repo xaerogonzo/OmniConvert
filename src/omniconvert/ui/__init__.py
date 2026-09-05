@@ -10,6 +10,7 @@ from .controls_panel import ControlsPanel
 from .log_panel import LogPanel
 from .queue_model import QueueItem, QueueModel
 from .queue_panel import QueuePanel
+from .toolbar_panel import ToolbarPanel
 
 __all__ = [
     "FORMATS",
@@ -19,4 +20,5 @@ __all__ = [
     "QueueItem",
     "QueueModel",
     "QueuePanel",
+    "ToolbarPanel",
 ]

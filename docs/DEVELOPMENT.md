@@ -52,12 +52,17 @@ src/
       from_markdown.py      All output generators from Markdown
       hifi.py               High-fidelity PDF → DOCX via pdf2docx
       assets.py             Cover image extraction (PDF / DOCX / EPUB)
+    formats.py              Tk-free format vocabulary (shared with settings)
+    settings.py             Versioned, field-tolerant preference persistence
+    converters/
+      markers.py            The GUI<->worker wire protocol (one serializer/parser)
     ui/
       __init__.py
-      constants.py          Shared formats, status icons, row colours
-      queue_model.py        Tk-free queue state (add/dedup/select/status)
+      constants.py          Status icons, row colours; re-exports formats
+      queue_model.py        Tk-free queue state (add/dedup/select/status/errors)
       queue_panel.py        Cover preview + scrollable queue rows
-      controls_panel.py     Format, mode, options, progress bar, convert button
+      controls_panel.py     Format, mode, options, progress, convert, retry
+      toolbar_panel.py      Queue actions, queue summary, output destination
       log_panel.py          Log textbox
 
 scripts/

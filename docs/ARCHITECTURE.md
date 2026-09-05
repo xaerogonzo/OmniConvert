@@ -37,7 +37,14 @@ Every format is first reduced to Markdown (the hub), then compiled to the target
   .md    ──────────────────────────────────── └──► .md   (copy)
 ```
 
-Intermediate `.md` files and image folders are written to the **same directory as the source file** and kept after conversion. This makes outputs natively compatible with AI pipelines and local LLM tooling.
+Intermediate `.md` files and image folders are written to the **effective output root** and kept after conversion, which makes them natively compatible with AI pipelines and local LLM tooling.
+
+The output root is `ConvertParams.dest_dir`, defaulting to the source file's own
+directory. It is a *root*, not a destination for the final file alone: the
+output, the hub `.md`, the `_img/` folder and the cover all live under it
+together. Splitting them would break the image-reference contract below. Set
+`keep_intermediates=False` to delete the hub and image folder after a successful
+conversion (the cover is always kept - the queue panel previews it).
 
 ---
 
@@ -171,7 +178,7 @@ OmniConvert
 
 ## File Naming Convention
 
-All outputs land in the same directory as the source file. Colons are replaced with hyphens; runs of whitespace are collapsed.
+All outputs land in the effective output root - by default the source file's own directory. Colons are replaced with hyphens; runs of whitespace are collapsed.
 
 ```
 Source:   C:\Books\My Book - 2024: Final.pdf
@@ -239,6 +246,22 @@ is the rule to follow.**
 Stems can contain spaces, so DOCX references are percent-encoded
 (`Smoke%20Doc_docx_img/img_001.png`). A raw space would terminate the URL early
 in Markdown and break the reference.
+
+### Two consequences of a configurable output root
+
+**The artifact set must resolve to one stem.** `{stem}.md`, `{stem}_img/` and
+`{stem}_cover.png` are derived from a single `_claim_base_stem()` result.
+Resolving each independently yields `Book_pdf (1).md` beside `Book_pdf_img (1)`,
+so the markdown points at `Book_pdf (1)_img/`, which does not exist. Collisions
+are only broken *within a run* (via the `claimed` set), so re-converting a file
+still overwrites its own artifacts rather than accumulating `(1)`, `(2)`, ...
+
+**Passthrough sources keep their images where they were.** Converting a `.md`
+into a different output root moves the hub but not the images beside the
+original file. Generators therefore resolve against *several* roots - the
+markdown's parent first, then the source's - via `from_markdown._asset_roots()`,
+using `pymupdf.Archive` for PDF and an `os.pathsep`-joined `--resource-path` for
+pandoc.
 
 ---
 

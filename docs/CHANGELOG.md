@@ -2,6 +2,66 @@
 
 All notable changes to OmniConvert are documented here.
 
+## [0.4.0] — 2026-08-30
+
+### Added
+- **Choose where output goes.** "Output to…" sets an output *root*: the converted
+  file, the hub `.md`, the `_img/` folder and the cover all land there together.
+  Leaving it unset keeps the v0.3 behaviour of writing beside each source. This
+  also makes read-only and network sources convertible.
+- **"Keep intermediate files" option.** On by default. Turning it off deletes the
+  hub markdown and image folder after a *successful* conversion, so a 50-file
+  batch stops leaving 150 extra files among the originals. The cover is always
+  kept — the queue panel previews it. Cleanup failures are logged as warnings and
+  never turn a successful conversion into a failed one.
+- **Per-row remove.** Each queue row has a `✕`. Refused while a batch is running,
+  because worker progress is reported by position and removing a row would shift
+  every later index onto the wrong file.
+- **Failure reasons on the row.** A failed file shows why in place, clipped to one
+  line, with the full text still in the log. Previously the only way to find out
+  was scrolling the log.
+- **Retry Failed.** Re-runs only the failed rows, leaving completed ones alone.
+  Repeatable while failures remain. Cancelled-but-unstarted files stay `pending`
+  rather than `error`, so retry correctly skips them.
+- **Session memory.** Target format, mode, all four options, output destination
+  and window geometry persist to `%LOCALAPPDATA%/OmniConvert/settings.json`. The
+  file is versioned and tolerated field-by-field: one corrupt value resets that
+  value alone, and a missing, unreadable, malformed or future-version file starts
+  the app on defaults rather than failing.
+
+### Changed
+- **The GUI↔worker protocol has one definition.** New
+  `converters/markers.py` owns the wire format with a single serializer and a
+  single parser; `pipeline.py` and `app.py` no longer restate marker strings.
+  `parse()` is a trust boundary — malformed worker messages degrade to log text
+  instead of raising into the poll loop.
+- Format vocabulary moved to a Tk-free `omniconvert/formats.py` so settings
+  validation can share it without importing CustomTkinter; `ui/constants.py`
+  re-exports it.
+- Toolbar extracted to `ui/toolbar_panel.py`, which owns the queue summary, the
+  drag hint and the destination display.
+- The conversion mode is persisted as the user's *preference*. An empty queue
+  forces the live mode to Standard, which previously overwrote a saved
+  High-Fidelity choice on every launch.
+
+### Fixed
+- **Passthrough sources lost their images when re-rooted.** Converting a `.md`
+  into a different output folder moved the hub but not the images beside the
+  original, so every reference broke. Generators now resolve against several
+  asset roots — the markdown's parent first, then the source's.
+- **A shared destination could make two sources overwrite each other.** Two
+  `Book.pdf` from different folders produced identical artifact names once they
+  were no longer separated by their parent directories. Stems are now claimed per
+  run, as a coherent set: `Book_pdf (1).md` comes with `Book_pdf (1)_img/`, never
+  a mismatched pair. Re-running one file still overwrites its own artifacts
+  rather than accumulating `(1)`, `(2)`, …
+- `Open Folder` opened the source's directory unconditionally, which stopped
+  being the output folder once a destination could be set. It, the cover preview
+  and open-cover now all derive from one resolver.
+- A corrupt saved window geometry could stop the app from starting: CustomTkinter
+  parses the string itself and raises `TypeError` from its scaling code, not the
+  `tk.TclError` a guard would expect.
+
 ## [0.3.0] — 2026-08-30
 
 ### Added

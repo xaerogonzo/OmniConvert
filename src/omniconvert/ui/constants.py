@@ -4,11 +4,14 @@ Kept in their own module so the panels can import them without reaching back
 into `app`, which would be circular.
 """
 
-SUPPORTED = {".pdf", ".docx", ".epub", ".md", ".txt"}
-FORMATS = ["PDF", "DOCX", "EPUB", "MD", "TXT"]
-
-# Formats that can only be produced by pandoc (Standard mode).
-PANDOC_TARGETS = {"docx", "epub", "txt"}
+# The format vocabulary lives in omniconvert.formats so settings validation can
+# import it without pulling in CustomTkinter; re-exported here for the panels.
+from omniconvert.formats import (  # noqa: F401
+    FORMATS,
+    MODES,
+    PANDOC_TARGETS,
+    SUPPORTED,
+)
 
 # Status icons for the queue rows
 STATUS_PENDING = "○"

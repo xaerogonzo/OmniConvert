@@ -1,3 +1,4 @@
+import os
 import shutil
 import warnings
 from pathlib import Path
@@ -38,6 +39,30 @@ _TABLE_CSS_PLAIN = """
 """
 
 
+def _asset_roots(md_path: Path, extra: "list[Path] | None") -> list[Path]:
+    """Directories to resolve relative image references against.
+
+    The markdown's own parent always comes first - that is where generated
+    images live, and it is the contract every generator has followed since
+    v0.2.0.
+
+    Extra roots exist for passthrough sources. A `.md` converted into a
+    different output root still references images sitting beside the ORIGINAL
+    file, so re-rooting the hub alone would silently drop every one of them.
+    """
+    out: list[Path] = []
+    seen: set[str] = set()
+    for root in (md_path.parent, *(extra or [])):
+        root = Path(root)
+        if not root.is_dir():
+            continue
+        key = str(root.resolve()).casefold()
+        if key not in seen:
+            seen.add(key)
+            out.append(root)
+    return out
+
+
 def convert(
     md_path: Path,
     img_dir: Path,
@@ -46,6 +71,7 @@ def convert(
     out_path: Path,
     log_q: Queue,
     strict_tables: bool = True,
+    asset_roots: list[Path] | None = None,
 ) -> None:
     """Convert md_path to target_fmt and write to out_path.
     img_dir is the folder containing extracted images referenced by the markdown.
@@ -53,13 +79,17 @@ def convert(
     fmt = target_fmt.lower()
 
     if fmt == "pdf":
-        _to_pdf(md_path, out_path, log_q, strict_tables=strict_tables)
+        _to_pdf(md_path, out_path, log_q, strict_tables=strict_tables,
+                asset_roots=asset_roots)
     elif fmt == "docx":
-        _to_pandoc(md_path, img_dir, "docx", out_path, log_q)
+        _to_pandoc(md_path, img_dir, "docx", out_path, log_q,
+                   asset_roots=asset_roots)
     elif fmt == "epub":
-        _to_pandoc(md_path, img_dir, "epub3", out_path, log_q, cover_path=cover_path)
+        _to_pandoc(md_path, img_dir, "epub3", out_path, log_q,
+                   cover_path=cover_path, asset_roots=asset_roots)
     elif fmt == "txt":
-        _to_pandoc(md_path, img_dir, "plain", out_path, log_q)
+        _to_pandoc(md_path, img_dir, "plain", out_path, log_q,
+                   asset_roots=asset_roots)
     elif fmt == "md":
         shutil.copy2(str(md_path), str(out_path))
         log_q.put(f"[✓] Done: {out_path.name}")
@@ -68,7 +98,8 @@ def convert(
 
 
 def _to_pdf(
-    md_path: Path, out_path: Path, log_q: Queue, strict_tables: bool = True
+    md_path: Path, out_path: Path, log_q: Queue, strict_tables: bool = True,
+    asset_roots: list[Path] | None = None,
 ) -> None:
     """MD → PDF via PyMuPDF's Story renderer: markdown lib → HTML → PDF.
 
@@ -97,7 +128,10 @@ def _to_pdf(
     css = _BASE_CSS + (_TABLE_CSS_STRICT if strict_tables else _TABLE_CSS_PLAIN)
     full_html = f"<html><head><style>{css}</style></head><body>{html_body}</body></html>"
 
-    story = pymupdf.Story(html=full_html, archive=str(md_path.parent))
+    archive = pymupdf.Archive()
+    for root in _asset_roots(md_path, asset_roots):
+        archive.add(str(root))
+    story = pymupdf.Story(html=full_html, archive=archive)
     writer = pymupdf.DocumentWriter(str(out_path))
 
     page_rect = pymupdf.paper_rect("letter")
@@ -134,6 +168,7 @@ def _to_pandoc(
     out_path: Path,
     log_q: Queue,
     cover_path: Path | None = None,
+    asset_roots: list[Path] | None = None,
 ) -> None:
     import pypandoc
 
@@ -145,7 +180,10 @@ def _to_pandoc(
     # resource path must be the directory CONTAINING the .md, NOT the img folder
     # itself — pointing it at img_dir makes pandoc look for img_dir/img_dir/x.png
     # and silently drop every image.
-    extra_args: list[str] = [f"--resource-path={md_path.parent}"]
+    roots = _asset_roots(md_path, asset_roots)
+    extra_args: list[str] = [
+        "--resource-path=" + os.pathsep.join(str(r) for r in roots)
+    ]
 
     if pandoc_fmt == "epub3" and cover_path and cover_path.exists():
         extra_args += [f"--epub-cover-image={cover_path}"]

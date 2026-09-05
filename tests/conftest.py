@@ -5,6 +5,7 @@ libraries that produce them. Nothing here touches Tk — every test in this suit
 runs headless.
 """
 
+import random
 import struct
 import sys
 import zlib
@@ -20,9 +21,23 @@ if str(_SRC) not in sys.path:
 
 
 def write_png(path: Path, width: int = 8, height: int = 8,
-              rgb: tuple[int, int, int] = (200, 30, 30)) -> Path:
-    """Write a minimal valid RGB PNG without depending on Pillow's encoder."""
-    raw = b"".join(b"\x00" + bytes(rgb) * width for _ in range(height))
+              rgb: tuple[int, int, int] = (200, 30, 30),
+              noisy: bool = False) -> Path:
+    """Write a minimal valid RGB PNG without depending on Pillow's encoder.
+
+    `noisy` fills the image with deterministic pseudo-random pixels so it does
+    not compress away. A solid colour compresses to ~100 bytes, which slips
+    under the 5 KB floor `assets._cover_docx` uses to skip icon-sized junk - so
+    a flat fixture image can never exercise cover extraction at all.
+    """
+    if noisy:
+        rnd = random.Random(0xC0FFEE)          # deterministic across runs
+        raw = b"".join(
+            b"\x00" + bytes(rnd.randrange(256) for _ in range(width * 3))
+            for _ in range(height)
+        )
+    else:
+        raw = b"".join(b"\x00" + bytes(rgb) * width for _ in range(height))
 
     def chunk(tag: bytes, data: bytes) -> bytes:
         body = tag + data
@@ -62,7 +77,9 @@ def sample_docx(tmp_path: Path) -> Path:
     """
     docx = pytest.importorskip("docx", reason="python-docx is a dev dependency")
 
-    png = write_png(tmp_path / "embedded.png")
+    # Large and incompressible, so cover extraction (which skips media
+    # under 5 KB) actually has something to find.
+    png = write_png(tmp_path / "embedded.png", 120, 120, noisy=True)
     doc = docx.Document()
     doc.add_heading("Sample Heading", level=1)
     doc.add_paragraph("Paragraph before the image.")

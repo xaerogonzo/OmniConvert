@@ -149,3 +149,84 @@ class TestSelection:
 
     def test_preview_is_minus_one_when_empty(self):
         assert QueueModel().preview_idx == -1
+
+
+class TestErrorState:
+    def test_a_failure_records_its_reason(self, files):
+        m = QueueModel()
+        m.add(files)
+        m.set_status(1, "error", "RuntimeError: boom")
+        assert m[1].status == "error" and m[1].error == "RuntimeError: boom"
+
+    def test_success_clears_a_previous_reason(self, files):
+        """A retry that works must stop showing why it failed last time."""
+        m = QueueModel()
+        m.add(files)
+        m.set_status(1, "error", "boom")
+        m.set_status(1, "done")
+        assert m[1].error is None
+
+    def test_reset_statuses_clears_errors(self, files):
+        """A fresh batch showing last run's failures would be misleading."""
+        m = QueueModel()
+        m.add(files)
+        m.set_status(0, "error", "boom")
+        m.set_status(2, "done")
+        m.reset_statuses()
+        assert [i.status for i in m] == ["pending"] * 3
+        assert all(i.error is None for i in m)
+
+    def test_failed_indices_lists_only_failures(self, files):
+        m = QueueModel()
+        m.add(files)
+        m.set_status(0, "done")
+        m.set_status(1, "error", "boom")
+        assert m.failed_indices == [1]
+        assert m.has_failures
+
+    def test_pending_rows_are_not_failures(self, files):
+        """Cancellation leaves unstarted files pending, so retry skips them."""
+        m = QueueModel()
+        m.add(files)
+        m.set_status(0, "done")
+        assert m.failed_indices == [] and not m.has_failures
+
+
+class TestResetItems:
+    def test_resets_only_the_named_rows(self, files):
+        m = QueueModel()
+        m.add(files)
+        m.set_status(0, "done")
+        m.set_status(1, "error", "boom")
+        m.set_status(2, "done")
+
+        m.reset_items(m.failed_indices)
+
+        assert [i.status for i in m] == ["done", "pending", "done"], (
+            "retry must not discard completion state the user already earned"
+        )
+        assert m[1].error is None
+
+    def test_out_of_range_indices_are_ignored(self, files):
+        m = QueueModel()
+        m.add(files)
+        m.set_status(0, "done")
+        m.reset_items([99, -5])
+        assert m[0].status == "done"
+
+    def test_clears_the_running_cursor(self, files):
+        m = QueueModel()
+        m.add(files)
+        m.set_running(2)
+        m.reset_items([2])
+        assert m.running_idx == -1
+
+    def test_repeated_retry_of_a_persistent_failure(self, files):
+        """The same file can keep failing and keep being retried."""
+        m = QueueModel()
+        m.add(files)
+        for _ in range(3):
+            m.set_status(1, "error", "still broken")
+            assert m.has_failures
+            m.reset_items(m.failed_indices)
+            assert m[1].status == "pending"

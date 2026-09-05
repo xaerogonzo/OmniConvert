@@ -102,11 +102,19 @@ D:\Random Projects\File Converter\
 - **No system libraries, ever.** weasyprint was removed in v0.3.0 because it needs the GTK/Pango DLLs, which Nuitka cannot bundle — the built .exe could not make PDFs on a clean machine. Do not reintroduce a dependency that needs a system-wide install.
 - **Image reference contract**: parsers emit refs that ALREADY contain the img-folder name. Output generators resolve them against `md_path.parent` — `archive=` for pymupdf, `--resource-path=` for pandoc. Never point either at `img_dir`; it resolves one level too deep and images vanish silently.
 - **DOCX images**: `_from_docx` drives mammoth directly with a custom `convert_image` handler. Do not fall back to plain `MarkItDown().convert()` — mammoth's default handler inlines base64 data URIs and leaves `_img/` empty.
+- **`dest_dir` is the artifact ROOT**, not just where the final file goes: output, hub `.md`, `_img/` and cover move together, or image references break. Collision stems are claimed per-run so re-runs stay idempotent.
 - **Cancellation is between files, never mid-file.** Aborting in flight would strand PyMuPDF buffers or a live Word COM instance.
 - **Build config**: `build.ps1` must stay pure ASCII (PowerShell 5.1 reads it as
   cp1252). Never exclude `numpy`/`pandas`/`cv2` from the Nuitka flags - they are
   transitive but required. Always keep `sympy` excluded. Verify a build by
   actually running `dist/OmniConvert.exe`, not just by it compiling.
+- **Marker protocol**: `converters/markers.py` is the ONLY place the GUI<->worker
+  wire format is written or read. Never add a raw `__MARKER__` string elsewhere.
+  `parse()` must keep returning None for malformed input rather than raising.
+- **Settings**: versioned and tolerated field-by-field; one bad value resets that
+  value alone, and `load()` must never stop the app starting. `config_path()`
+  must never derive from `__file__` - a frozen exe cannot write to its install
+  directory.
 - **Tests**: `python -m pytest`. Keep new queue/pipeline logic Tk-free so it stays coverable; GUI tests share one Tk root per module.
 - **Path safety**: Use `pathlib.Path` everywhere. `sanitize_stem()` in `pipeline.py` replaces `:` with `-` and collapses whitespace.
 - **Imports**: Inside the `omniconvert` package, use absolute imports from the package root: `from omniconvert.converters.pipeline import ...`. Within `converters/` submodules, relative imports (`from . import ...`) are fine.

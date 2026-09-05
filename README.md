@@ -48,6 +48,10 @@ python -m pytest
 - **"Add Folder…"** — recursive scan option for deep folder hierarchies
 - All inline images extracted and re-embedded in the output
 - Portable pandoc — no system-wide install, no admin rights
+- **Choose an output folder**, or leave outputs beside each source (the default)
+- **Discard intermediates** after conversion, or keep them for AI pipelines
+- **Remove single files** from the queue, see why one failed, and retry just the failures
+- **Remembers your settings** between launches
 - **Cancel** a running batch at any point — the current file finishes, the rest are skipped
 - Live progress bar and per-file status icons
 - Intermediate Markdown files kept on disk (AI pipeline friendly)

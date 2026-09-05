@@ -25,6 +25,15 @@ from .queue_model import QueueModel
 
 _COVER_MAX = (120, 160)
 
+#: Failure reasons are rendered on a ~300px row, so they get clipped here. The
+#: untruncated message is always in the log.
+_ERROR_CLIP = 90
+
+
+def _clip(text: str, limit: int = _ERROR_CLIP) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
 
 def _make_placeholder(w: int = 120, h: int = 160) -> ImageTk.PhotoImage:
     return ImageTk.PhotoImage(Image.new("RGB", (w, h), "#2b2b2b"))
@@ -44,11 +53,13 @@ class QueuePanel(ctk.CTkFrame):
         parent,
         model: QueueModel,
         on_row_click: Callable[[int], None],
+        on_row_remove: Callable[[int], None],
         on_cover_click: Callable[[], None],
     ) -> None:
         super().__init__(parent, width=300, fg_color=PANEL_BG, corner_radius=10)
         self._model = model
         self._on_row_click = on_row_click
+        self._on_row_remove = on_row_remove
 
         self.grid_propagate(False)
         self.grid_columnconfigure(0, weight=1)
@@ -102,12 +113,34 @@ class QueuePanel(ctk.CTkFrame):
 
             size = ctk.CTkLabel(row, text=_size_label(item.path), text_color="gray",
                                 font=ctk.CTkFont(size=10))
-            size.grid(row=0, column=2, padx=(0, 8))
+            size.grid(row=0, column=2, padx=(0, 4))
+
+            remove = ctk.CTkLabel(row, text="✕", width=16, text_color="#777",
+                                  cursor="hand2", font=ctk.CTkFont(size=12))
+            remove.grid(row=0, column=3, padx=(0, 6))
+            remove.bind("<Button-1>", lambda e, i=idx: self._on_row_remove(i))
+            remove.bind("<Enter>", lambda e, w=remove: w.configure(text_color="#e06c6c"))
+            remove.bind("<Leave>", lambda e, w=remove: w.configure(text_color="#777"))
 
             for w in (row, icon, name, size):
                 w.bind("<Button-1>", lambda e, i=idx: self._on_row_click(i))
 
-            self._rows.append({"frame": row, "icon": icon, "name": name, "size": size})
+            widgets = {"frame": row, "icon": icon, "name": name,
+                       "size": size, "remove": remove, "error": None}
+
+            # A failed row explains itself in place; the full text stays in the
+            # log, since a traceback can run to hundreds of characters.
+            if item.error:
+                err = ctk.CTkLabel(
+                    row, text=_clip(item.error), anchor="w", justify="left",
+                    text_color="#e06c6c", font=ctk.CTkFont(size=10),
+                )
+                err.grid(row=1, column=1, columnspan=3, sticky="ew",
+                         padx=(0, 6), pady=(0, 4))
+                err.bind("<Button-1>", lambda e, i=idx: self._on_row_click(i))
+                widgets["error"] = err
+
+            self._rows.append(widgets)
 
         self.refresh_header()
         self.render_status()

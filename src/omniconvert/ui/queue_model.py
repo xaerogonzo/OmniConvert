@@ -20,6 +20,9 @@ Status = str  # "pending" | "running" | "done" | "error"
 class QueueItem:
     path: Path
     status: Status = "pending"
+    #: Why this file failed, short enough for a row subtitle. The full text
+    #: always stays in the log; this is the copy the user can see in place.
+    error: str | None = None
 
 
 @dataclass
@@ -77,15 +80,39 @@ class QueueModel:
         self.running_idx = self._shift(self.running_idx, idx)
 
     def reset_statuses(self) -> None:
-        """Called at the start of a run: every row back to pending, cursors idle."""
+        """Called at the start of a full run: every row back to pending.
+
+        Errors are cleared too - a fresh batch showing last run's failures would
+        be actively misleading.
+        """
         for item in self.items:
             item.status = "pending"
+            item.error = None
         self.selected_idx = -1
         self.running_idx = -1
 
-    def set_status(self, idx: int, status: Status) -> None:
-        if 0 <= idx < len(self.items):
-            self.items[idx].status = status
+    def reset_items(self, indices) -> None:
+        """Reset only the named rows, for retry.
+
+        Retry must not use reset_statuses(): that would turn a `done, error,
+        done, error` queue into four pending rows and throw away completion
+        state the user already earned.
+        """
+        for i in indices:
+            if 0 <= i < len(self.items):
+                self.items[i].status = "pending"
+                self.items[i].error = None
+        self.running_idx = -1
+
+    def set_status(self, idx: int, status: Status,
+                   error: str | None = None) -> None:
+        if not 0 <= idx < len(self.items):
+            return
+        item = self.items[idx]
+        item.status = status
+        # Anything other than a failure clears the previous reason, so a
+        # successful retry stops showing why it failed last time.
+        item.error = error if status == "error" else None
 
     def set_running(self, idx: int) -> None:
         self.set_status(idx, "running")
@@ -102,6 +129,16 @@ class QueueModel:
             self.selected_idx = -1
         else:
             self.selected_idx = idx
+
+    @property
+    def failed_indices(self) -> list[int]:
+        """Rows a retry would re-run. Cancelled-but-unstarted files are
+        `pending`, not `error`, so they are correctly excluded."""
+        return [i for i, item in enumerate(self.items) if item.status == "error"]
+
+    @property
+    def has_failures(self) -> bool:
+        return any(item.status == "error" for item in self.items)
 
     @property
     def is_auto_tracking(self) -> bool:

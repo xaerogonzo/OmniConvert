@@ -61,7 +61,7 @@ class TestFromMarkdownDispatch:
         seen = {}
         monkeypatch.setattr(
             from_markdown, "_to_pdf",
-            lambda md, out, q, strict_tables=True: seen.update(strict=strict_tables),
+            lambda md, out, q, strict_tables=True, **kw: seen.update(strict=strict_tables),
         )
         from_markdown.convert(tmp_path / "x.md", tmp_path / "img", None,
                               "pdf", tmp_path / "out.pdf", log_q, strict_tables=False)

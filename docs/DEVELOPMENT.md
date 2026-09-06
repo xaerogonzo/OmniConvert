@@ -8,10 +8,20 @@
 
 ## First-Time Setup
 
+Use a project virtualenv. `requirements.txt` pins exact versions, and those
+pins are only meaningful in an environment OmniConvert controls - installing
+into a shared conda base means some other project's constraints silently win.
+That has already bitten once: the pytest pin read 8.4.2 while 9.0.3 was what
+actually ran.
+
 ```bash
 # Clone / open the project folder, then:
 
-# 1. Install Python dependencies
+# 1. Create an isolated environment and install dependencies
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements.txt -r requirements-dev.txt
+
+# (equivalently, without a venv - not recommended)
 pip install -r requirements.txt
 
 # 2. Install portable pandoc (writes vendor/pandoc/pandoc.exe)
@@ -24,8 +34,7 @@ python main.py
 ## Testing
 
 ```bash
-pip install -r requirements.txt -r requirements-dev.txt
-python -m pytest
+.venv/Scripts/python -m pytest
 ```
 
 The whole suite is headless and takes a few seconds. Fixtures (DOCX, PNG) are

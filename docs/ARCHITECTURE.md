@@ -308,13 +308,23 @@ generic "Anaconda bloat" filtering and was wrong for this project:
 | Package | Reached via | Status |
 |---|---|---|
 | `numpy` | `pdf2docx` -> `cv2` | **must be bundled** |
-| `pandas` | `markitdown` (at module load) | **must be bundled** |
+| `pandas` | `markitdown`, *only if pandas is installed* | **not excluded** |
 | `cv2` | `pdf2docx` | **must be bundled** |
 | `sympy` | `pdf2docx` -> `fontTools` -> `fontTools.misc.symfont` | excluded - unused |
 | `scipy`, `matplotlib`, `sklearn`, `IPython`, `notebook` | not reached | excluded |
 
-Excluding `numpy` and `pandas` produced an `.exe` that raised `ImportError` on
-**every DOCX source** and on **High-Fidelity PDF -> DOCX**. That shipped from
+Excluding `numpy` produced an `.exe` that raised `ImportError` on **every DOCX
+source** and on **High-Fidelity PDF -> DOCX**.
+
+`pandas` is a subtler case and the entry above is deliberately conditional.
+markitdown does *not* require it - in a clean virtualenv markitdown imports only
+numpy. But markitdown has optional converters that import pandas *when it happens
+to be installed*, so a build run from an environment that has pandas (a shared
+conda base, say) will trace into it. Excluding it would then break DOCX in the
+exe while working perfectly from source. Leaving it un-excluded costs nothing
+when pandas is absent and is correct when it is present - which is also why the
+build should be run from the project venv, where the dependency set is exactly
+the pinned one. That shipped from
 v0.2.0 and went unnoticed because the build never survived long enough to emit a
 binary. `tests/test_build_script.py` now asserts the include and exclude sets do
 not contradict each other.

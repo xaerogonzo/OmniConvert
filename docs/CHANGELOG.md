@@ -114,10 +114,12 @@ All notable changes to OmniConvert are documented here.
 - **The Nuitka build now produces a working executable.** Three faults, all
   pre-existing and inherited from the build template, meant `OmniConvert.exe` had
   been broken since v0.2.0:
-  - `numpy` and `pandas` were on the `--nofollow-import-to` exclusion list while
-    being genuinely required (`pdf2docx` reaches numpy through `cv2`; `markitdown`
-    imports pandas at module load). The exe raised `ImportError` on **every DOCX
-    source** and on **High-Fidelity PDF -> DOCX**. Both are now bundled.
+  - `numpy` was on the `--nofollow-import-to` exclusion list while being
+    genuinely required (`pdf2docx` reaches it through `cv2`). The exe raised
+    `ImportError` on **every DOCX source** and on **High-Fidelity PDF -> DOCX**.
+    `pandas` was un-excluded alongside it; markitdown does not require pandas,
+    but it imports it when present, so a build from an environment that has it
+    would otherwise trace into a package it was told to skip.
   - `sympy` was *not* excluded, though nothing uses it - it is reached only via
     `pdf2docx` -> `fontTools` -> `fontTools.misc.symfont`. Nuitka compiled all
     ~1000 of its modules: 5958 object files, 3.2 GB, and a build that stalled

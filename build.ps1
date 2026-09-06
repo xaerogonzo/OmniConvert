@@ -25,6 +25,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $ROOT = $PSScriptRoot
+
+# src layout: the package lives in src\, and main.py only puts it on sys.path at
+# runtime. Nuitka resolves --include-package against sys.path at BUILD time, so
+# it needs to be told where to look.
+$env:PYTHONPATH = "$PSScriptRoot\src"
 $DIST = "$ROOT\dist"
 $ICON = "$ROOT\icon.ico"
 
@@ -168,6 +173,12 @@ $guiArgs = @(
     "--remove-output",
     "--assume-yes-for-downloads",
     "--output-dir=$DIST",
+    # OmniConvert's OWN package. main.py adds src/ to sys.path at RUNTIME,
+    # which Nuitka's static analysis cannot follow - so without this (and the
+    # PYTHONPATH below) it compiles main.py, bundles every third-party library,
+    # and silently omits the application itself. The exe then builds cleanly and
+    # dies on launch with "No module named 'omniconvert'".
+    "--include-package=omniconvert",
     "--include-package=customtkinter",
     "--include-package=pymupdf",
     "--include-package=markitdown",

@@ -78,10 +78,15 @@ def test_sympy_is_excluded_from_the_build():
 def test_required_heavyweights_are_not_excluded(pkg):
     """These are reached transitively and must be bundled.
 
-    pdf2docx -> cv2 -> numpy, and markitdown imports pandas at module load.
-    Excluding either produced an .exe that raised ImportError on every DOCX
-    source and on High-Fidelity PDF -> DOCX. That shipped broken from v0.2.0
-    and went unnoticed because the build died before it emitted a binary.
+    pdf2docx reaches numpy through cv2, so excluding numpy produced an .exe
+    that raised ImportError on every DOCX source and on High-Fidelity
+    PDF -> DOCX. That shipped broken from v0.2.0 and went unnoticed because the
+    build died before it ever emitted a binary.
+
+    pandas is conditional: markitdown does NOT require it (a clean venv pulls
+    only numpy), but markitdown imports it when it is installed. A build run
+    from an environment that has pandas would therefore trace into a package the
+    flags told it to skip, so it stays off the exclusion list either way.
     """
     assert f"--nofollow-import-to={pkg}" not in _active_flags()
 
@@ -106,3 +111,23 @@ def test_memory_guards_are_present(flag):
     each before these flags existed.
     """
     assert flag in _active_flags()
+
+
+def test_the_application_package_is_bundled():
+    """Without this the exe builds cleanly and contains no application.
+
+    main.py puts src/ on sys.path at RUNTIME, which Nuitka's static analysis
+    cannot follow, so `from omniconvert.app import ...` is unresolvable at build
+    time. Nuitka then compiles main.py, bundles all ten third-party libraries,
+    and silently omits OmniConvert itself - a 127 MB executable that dies on
+    launch with "No module named 'omniconvert'". Nothing fails during the build,
+    which is what let it go unnoticed.
+    """
+    assert "--include-package=omniconvert" in _active_flags()
+
+
+def test_build_sets_pythonpath_for_the_src_layout():
+    """--include-package is resolved against sys.path at build time, so Nuitka
+    has to be told where the src-layout package lives."""
+    flags = _active_flags()
+    assert "PYTHONPATH" in flags and "src" in flags

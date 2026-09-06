@@ -27,10 +27,13 @@ tkinterdnd2==0.4.3
 # Transitive but REQUIRED at runtime - pip resolves these, but the Nuitka build
 # must not exclude them (build.ps1):
 #   numpy   <- pdf2docx -> cv2        (High-Fidelity PDF -> DOCX)
-#   pandas  <- markitdown             (imported at module load, every DOCX)
+#   pandas  <- markitdown, but ONLY if pandas happens to be installed;
+#             markitdown does not require it (clean venv pulls only numpy)
 #   cv2     <- pdf2docx
-# Excluding numpy/pandas produced an .exe that raised ImportError on every DOCX
-# source and on High-Fidelity PDF -> DOCX. See docs/ARCHITECTURE.md.
+# Excluding numpy produced an .exe that raised ImportError on every DOCX source
+# and on High-Fidelity PDF -> DOCX. pandas stays un-excluded because a build run
+# from an environment that has it will trace into markitdown's optional
+# converters. See docs/ARCHITECTURE.md.
 #
 # sympy is also pulled in (pdf2docx -> fontTools -> fontTools.misc.symfont) but
 # is NOT used by anything here; build.ps1 excludes it deliberately.

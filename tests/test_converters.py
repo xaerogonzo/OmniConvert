@@ -6,6 +6,8 @@ weasyprint (which needs GTK/Pango DLLs that cannot be bundled into the Nuitka
 exe) onto PyMuPDF's Story renderer.
 """
 
+import re
+
 import pytest
 
 from conftest import drain, write_png
@@ -113,3 +115,29 @@ class TestMarkdownToPdf:
         from_markdown.convert(md, img_dir, None, "pdf", out, log_q)
         with pymupdf.open(str(out)) as doc:
             assert doc.page_count < 10
+
+
+class TestPdfToMarkdownOddPaths:
+    """pymupdf4llm rewrites spaces/brackets in image_path; we must survive that."""
+
+    def test_pdf_images_survive_spaces_and_brackets_in_path(self, tmp_path, log_q):
+        import urllib.parse
+
+        folder = tmp_path / "dir with space (1)"
+        folder.mkdir()
+        png = folder / "pic.png"
+        write_png(png, 200, 200)
+        pdf = folder / "doc.pdf"
+        with pymupdf.open() as doc:
+            page = doc.new_page()
+            page.insert_text((72, 72), "Hello")
+            page.insert_image(pymupdf.Rect(72, 100, 272, 300), filename=str(png))
+            doc.save(str(pdf))
+        md = folder / "doc.md"
+        img_dir = folder / "doc_img"
+        to_markdown.convert(pdf, md, img_dir, log_q)
+        assert any(img_dir.iterdir())
+        refs = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", md.read_text(encoding="utf-8"))
+        assert refs
+        for ref in refs:
+            assert (md.parent / urllib.parse.unquote(ref)).is_file()

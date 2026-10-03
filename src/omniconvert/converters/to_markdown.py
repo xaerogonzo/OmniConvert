@@ -2,7 +2,9 @@ import io
 import itertools
 import mimetypes
 import shutil
+import tempfile
 import urllib.parse
+import uuid
 import warnings
 from pathlib import Path
 from queue import Queue
@@ -41,17 +43,42 @@ def convert(src: Path, md_out: Path, img_dir: Path, log_q: Queue) -> None:
         raise ValueError(f"Unsupported input format: {suffix}")
 
 
+def _safe_scratch_dir() -> Path:
+    """Fresh empty dir whose path has no characters pymupdf4llm rewrites."""
+    bad = set(" ()[]")
+    scratch = Path(tempfile.mkdtemp(prefix="omni_"))
+    if not bad & set(scratch.as_posix()):
+        return scratch
+    scratch.rmdir()
+    fallback = Path(scratch.anchor) / f"_omni_tmp_{uuid.uuid4().hex[:8]}"
+    fallback.mkdir()
+    return fallback
+
+
 def _from_pdf(src: Path, md_out: Path, img_dir: Path, log_q: Queue) -> None:
     import pymupdf4llm
 
     log_q.put("[*] Parsing PDF → Markdown (with images)...")
     img_dir.mkdir(parents=True, exist_ok=True)
 
-    md_text = pymupdf4llm.to_markdown(
-        str(src),
-        write_images=True,
-        image_path=str(img_dir),
-        image_format="png",
+    # pymupdf4llm sanitises image_path (spaces -> "_", ()[] -> "-") when saving,
+    # but only creates the unsanitised folder, so any path with those characters
+    # fails with "cannot open file". Render into a safely named scratch dir, then
+    # move the images into img_dir and point the refs at it.
+    scratch = _safe_scratch_dir()
+    try:
+        md_text = pymupdf4llm.to_markdown(
+            str(src),
+            write_images=True,
+            image_path=str(scratch),
+            image_format="png",
+        )
+        for f in scratch.iterdir():
+            shutil.move(str(f), str(img_dir / f.name))
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    md_text = md_text.replace(
+        scratch.as_posix() + "/", urllib.parse.quote(img_dir.name) + "/"
     )
     md_out.write_text(md_text, encoding="utf-8")
 

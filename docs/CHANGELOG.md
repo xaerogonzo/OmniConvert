@@ -57,6 +57,11 @@ All notable changes to OmniConvert are documented here.
   High-Fidelity choice on every launch.
 
 ### Fixed
+- **PDF → MD failed on any path containing spaces or brackets.** pymupdf4llm
+  rewrites those characters in its image path but only creates the original
+  folder, so saving images died with "cannot open file". `_from_pdf` now renders
+  into a safely named scratch dir, moves the images into `_img/`, and rewrites
+  the refs.
 - **Passthrough sources lost their images when re-rooted.** Converting a `.md`
   into a different output folder moved the hub but not the images beside the
   original, so every reference broke. Generators now resolve against several

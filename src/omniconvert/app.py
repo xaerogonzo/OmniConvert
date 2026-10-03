@@ -149,6 +149,7 @@ class OmniConvertApp(ctk.CTk, TkinterDnD.DnDWrapper):
             strict_tables=s.strict_tables,
             include_subfolders=s.include_subfolders,
             keep_intermediates=s.keep_intermediates,
+            append_files=s.append_files,
         )
         # A saved folder can be gone by now; the resolver decides, not us.
         self._dest_dir = s.effective_dest_dir()
@@ -163,6 +164,7 @@ class OmniConvertApp(ctk.CTk, TkinterDnD.DnDWrapper):
             strict_tables=self.controls.strict_tables,
             include_subfolders=self.controls.include_subfolders,
             keep_intermediates=self.controls.keep_intermediates,
+            append_files=self.controls.append_files,
             dest_dir=self._dest_dir,
             geometry=self.winfo_geometry(),
         )
@@ -377,7 +379,13 @@ class OmniConvertApp(ctk.CTk, TkinterDnD.DnDWrapper):
     # ==================================================================
 
     def _enqueue(self, paths: list[Path]) -> None:
-        """Append to the queue (v0.2 replaced it wholesale; now it accumulates)."""
+        """Queue `paths`: appended when "Add to existing queue" is ticked,
+        otherwise they replace whatever was queued (callers have already
+        refused mid-batch, so clearing here cannot disturb a running worker)."""
+        if not self.controls.append_files and self.model:
+            self.model.clear()
+            self.controls.set_source("—")
+            self.queue_panel.set_cover(None)
         was_empty = not self.model
         added = self.model.add(paths)
         skipped = len(paths) - added

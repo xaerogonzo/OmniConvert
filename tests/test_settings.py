@@ -203,3 +203,13 @@ def test_module_is_tk_free():
     )
     out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True)
     assert out.stdout.strip() == "False", out.stderr
+
+
+def test_append_files_defaults_off_and_bad_value_resets_alone(tmp_path):
+    cfg = tmp_path / "settings.json"
+    cfg.write_text(json.dumps({"version": settings.CURRENT_VERSION,
+                               "append_files": "yes", "strict_tables": False}),
+                   encoding="utf-8")
+    loaded = settings.load(cfg)
+    assert loaded.append_files is False, "the shipped default"
+    assert loaded.strict_tables is False, "one bad value must not reset the rest"

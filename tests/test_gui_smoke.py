@@ -44,6 +44,7 @@ def app(_window):
     _window.controls.mode_var.set("Standard")
     # Every piece of window state a test can mutate has to be reset here, or it
     # leaks into the next test through the shared root.
+    _window.controls.set_options(append_files=False)   # the shipped default
     _window._dest_dir = None
     _window._refresh_dest_label()
     _window._refresh_queue_ui()
@@ -73,7 +74,18 @@ def test_enqueue_updates_panel_and_log(app, tmp_path):
     assert app.model[0].path == f
 
 
+def test_enqueue_replaces_the_queue_by_default(app, tmp_path):
+    a = tmp_path / "a.md"; a.write_text("a", encoding="utf-8")
+    b = tmp_path / "b.md"; b.write_text("b", encoding="utf-8")
+    app._enqueue([a])
+    app._enqueue([b])
+    app.update()
+    assert [i.path.name for i in app.model] == ["b.md"]
+    assert app.controls._source_label.cget("text") == "Source: b.md"
+
+
 def test_enqueue_is_additive_and_dedupes(app, tmp_path):
+    app.controls.set_options(append_files=True)
     a = tmp_path / "a.md"; a.write_text("a", encoding="utf-8")
     b = tmp_path / "b.md"; b.write_text("b", encoding="utf-8")
     app._enqueue([a])
@@ -309,7 +321,8 @@ class TestSettingsIntegration:
         app.controls.fmt_var.set("EPUB")
         app.controls.set_preferred_mode("High-Fidelity")
         app.controls.set_options(extract_cover=False, strict_tables=False,
-                                 include_subfolders=True, keep_intermediates=False)
+                                 include_subfolders=True, keep_intermediates=False,
+                                 append_files=True)
         app._dest_dir = dest
         app.update()
 
@@ -323,6 +336,7 @@ class TestSettingsIntegration:
         assert loaded.strict_tables is False
         assert loaded.include_subfolders is True
         assert loaded.keep_intermediates is False
+        assert loaded.append_files is True
         assert loaded.dest_dir == dest
 
     def test_mode_preference_survives_being_forced_to_standard(self, app, tmp_path):

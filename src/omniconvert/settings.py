@@ -46,6 +46,7 @@ class Settings:
     strict_tables: bool = True
     include_subfolders: bool = False
     keep_intermediates: bool = True
+    append_files: bool = False
     dest_dir: Path | None = None
     geometry: str | None = None
 
@@ -129,6 +130,7 @@ def load(path: Path | None = None) -> Settings:
                                  defaults.include_subfolders),
         keep_intermediates=_flag(raw.get("keep_intermediates"),
                                  defaults.keep_intermediates),
+        append_files=_flag(raw.get("append_files"), defaults.append_files),
         dest_dir=_directory(raw.get("dest_dir")),
         geometry=_geometry(raw.get("geometry")),
     )
@@ -154,6 +156,7 @@ def save(settings: Settings, path: Path | None = None) -> bool:
         "strict_tables": settings.strict_tables,
         "include_subfolders": settings.include_subfolders,
         "keep_intermediates": settings.keep_intermediates,
+        "append_files": settings.append_files,
         "dest_dir": str(settings.dest_dir) if settings.dest_dir else None,
         "geometry": settings.geometry,
     }

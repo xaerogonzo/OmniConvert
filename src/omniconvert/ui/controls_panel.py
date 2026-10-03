@@ -75,27 +75,30 @@ class ControlsPanel(ctk.CTkFrame):
         )
         row += 1
 
-        self._opt_cover = ctk.CTkCheckBox(self, text="Extract Cover")
-        self._opt_cover.select()
-        self._opt_cover.grid(row=row, column=0, sticky="w", padx=28, pady=2)
+        # Two columns: five options in one-per-row would push the Convert button
+        # out of the panel at the default window height.
+        opts = ctk.CTkFrame(self, fg_color="transparent")
+        opts.grid(row=row, column=0, sticky="ew", padx=18)
+        opts.grid_columnconfigure((0, 1), weight=1, uniform="opt")
         row += 1
 
-        # Drives ruled table borders on the MD → PDF path (from_markdown._to_pdf)
-        self._opt_tables = ctk.CTkCheckBox(self, text="Strict Table Grid")
-        self._opt_tables.select()
-        self._opt_tables.grid(row=row, column=0, sticky="w", padx=28, pady=2)
-        row += 1
+        def _box(text: str, r: int, c: int, *, checked: bool) -> ctk.CTkCheckBox:
+            box = ctk.CTkCheckBox(opts, text=text)
+            if checked:
+                box.select()
+            box.grid(row=r, column=c, sticky="w", padx=10, pady=3)
+            return box
 
-        self._opt_subfolders = ctk.CTkCheckBox(self, text="Include subfolders")
-        self._opt_subfolders.grid(row=row, column=0, sticky="w", padx=28, pady=2)
-        row += 1
-
+        self._opt_cover = _box("Extract Cover", 0, 0, checked=True)
+        # Drives ruled table borders on the MD -> PDF path (from_markdown._to_pdf)
+        self._opt_tables = _box("Strict Table Grid", 0, 1, checked=True)
+        self._opt_subfolders = _box("Include subfolders", 1, 0, checked=False)
         # On by default: docs/ARCHITECTURE.md documents keeping the hub markdown
         # and image folder as deliberate, for AI-pipeline use.
-        self._opt_keep = ctk.CTkCheckBox(self, text="Keep intermediate files")
-        self._opt_keep.select()
-        self._opt_keep.grid(row=row, column=0, sticky="w", padx=28, pady=2)
-        row += 1
+        self._opt_keep = _box("Keep intermediate files", 1, 1, checked=True)
+        # Off by default: a new Browse/Add Folder pick replaces the queue, so
+        # finished rows from the last run do not pile up under the new files.
+        self._opt_add = _box("Add to existing queue", 2, 0, checked=False)
 
         self.grid_rowconfigure(row, weight=1)
         row += 1
@@ -135,6 +138,10 @@ class ControlsPanel(ctk.CTkFrame):
     @property
     def keep_intermediates(self) -> bool:
         return bool(self._opt_keep.get())
+
+    @property
+    def append_files(self) -> bool:
+        return bool(self._opt_add.get())
 
     # ---- display -----------------------------------------------------
     def set_source(self, text: str) -> None:
@@ -176,11 +183,13 @@ class ControlsPanel(ctk.CTkFrame):
         self._preferred_mode = mode
 
     def set_options(self, *, extract_cover=None, strict_tables=None,
-                    include_subfolders=None, keep_intermediates=None) -> None:
+                    include_subfolders=None, keep_intermediates=None,
+                    append_files=None) -> None:
         for box, value in ((self._opt_cover, extract_cover),
                            (self._opt_tables, strict_tables),
                            (self._opt_subfolders, include_subfolders),
-                           (self._opt_keep, keep_intermediates)):
+                           (self._opt_keep, keep_intermediates),
+                           (self._opt_add, append_files)):
             if value is None:
                 continue
             box.select() if value else box.deselect()

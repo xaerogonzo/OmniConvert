@@ -57,6 +57,10 @@ All notable changes to OmniConvert are documented here.
   High-Fidelity choice on every launch.
 
 ### Fixed
+- **Queue: new picks replace it by default.** Browse/Add Folder/drop used to
+  stack under finished rows. A new "Add to existing queue" option (off by
+  default, saved with your settings) restores accumulating. The options are now
+  laid out in two columns so the Convert button stays inside the panel.
 - **Markdown output lost its images when "Keep intermediate files" was off.**
   Cleanup deleted the `_img/` folder the delivered `.md` links into. Only the
   duplicate hub `.md` is removed now.

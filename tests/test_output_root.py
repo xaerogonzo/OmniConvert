@@ -6,7 +6,9 @@ parent, so the artifact set has to stay a coherent sibling group no matter where
 it is rooted or how names collide.
 """
 
+import re
 import shutil
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -187,6 +189,24 @@ class TestCleanup:
         assert out.exists() and out.parent == dest
         assert not (dest / "Note_md.md").exists(), "hub is an intermediate"
         assert src.exists(), "the user's source file must never be deleted"
+
+    def test_md_output_keeps_the_images_it_links_to(self, sample_docx, tmp_path,
+                                                    log_q):
+        """The delivered .md links into the img folder, so cleanup must not
+        strip it - only the duplicate hub file goes."""
+        dest = tmp_path / "out"
+        dest.mkdir()
+        out = _run_single(
+            pipeline.ConvertParams(src=sample_docx, target_fmt="md",
+                                   mode="standard", extract_cover=False,
+                                   dest_dir=dest, keep_intermediates=False),
+            log_q,
+        )
+        assert not (dest / "Sample Doc_docx.md").exists(), "hub is scaffolding"
+        refs = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", out.read_text(encoding="utf-8"))
+        assert refs, "fixture should produce image links"
+        for ref in refs:
+            assert (out.parent / urllib.parse.unquote(ref)).is_file(), ref
 
     def test_failure_preserves_the_evidence(self, sample_docx, tmp_path, log_q,
                                             monkeypatch):

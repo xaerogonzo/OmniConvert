@@ -57,6 +57,9 @@ All notable changes to OmniConvert are documented here.
   High-Fidelity choice on every launch.
 
 ### Fixed
+- **Markdown output lost its images when "Keep intermediate files" was off.**
+  Cleanup deleted the `_img/` folder the delivered `.md` links into. Only the
+  duplicate hub `.md` is removed now.
 - **PDF → MD failed on any path containing spaces or brackets.** pymupdf4llm
   rewrites those characters in its image path but only creates the original
   folder, so saving images died with "cannot open file". `_from_pdf` now renders

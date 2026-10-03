@@ -111,8 +111,14 @@ def _intermediate_paths(
     return stem, src_ext, md_path, img_dir, cover_path
 
 
-def _cleanup_intermediates(md_path: Path, img_dir: Path, log_q: Queue) -> None:
+def _cleanup_intermediates(
+    md_path: Path, img_dir: Path, log_q: Queue, *, keep_images: bool = False
+) -> None:
     """Remove the hub markdown and image folder after a SUCCESSFUL conversion.
+
+    `keep_images` is for Markdown output, where the delivered `.md` links into
+    `img_dir`, so the images are part of the deliverable and only the duplicate
+    hub file is scaffolding.
 
     The cover PNG is deliberately kept: the queue panel previews it, so deleting
     it would blank the preview the instant a file finishes.
@@ -120,7 +126,7 @@ def _cleanup_intermediates(md_path: Path, img_dir: Path, log_q: Queue) -> None:
     Failing to delete a diagnostic artifact must never turn a successful
     conversion into a failed one, so every error here is a logged warning.
     """
-    for target in (img_dir, md_path):
+    for target in ((md_path,) if keep_images else (img_dir, md_path)):
         try:
             if target.is_dir():
                 shutil.rmtree(target)
@@ -197,9 +203,10 @@ def _run_single(
                 shutil.copy2(str(md_path), str(out_path))
             log_q.put(f"[✓] Done: {out_path.name}")
             # The hub is still an intermediate here: the bare-stem output above
-            # is the deliverable, `{stem}_{ext}.md` is scaffolding.
+            # is the deliverable, `{stem}_{ext}.md` is scaffolding. The images
+            # are NOT: the deliverable links into `{stem}_{ext}_img/`.
             if not params.keep_intermediates:
-                _cleanup_intermediates(md_path, img_dir, log_q)
+                _cleanup_intermediates(md_path, img_dir, log_q, keep_images=True)
             return out_path
 
         from_markdown.convert(

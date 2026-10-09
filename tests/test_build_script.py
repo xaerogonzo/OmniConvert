@@ -131,3 +131,15 @@ def test_build_sets_pythonpath_for_the_src_layout():
     has to be told where the src-layout package lives."""
     flags = _active_flags()
     assert "PYTHONPATH" in flags and "src" in flags
+
+
+def test_the_c_compiler_is_pinned():
+    """An unpinned backend is not reproducible, and MSVC cannot build this app.
+
+    Nuitka prefers MSVC when it finds one and otherwise downloads Zig, so the
+    backend changed by itself between two builds on the same machine. MSVC then
+    failed outright on pymupdf's 2.25-million-line generated translation unit
+    with C1002 (out of heap space in pass 2) - on the x64-hosted compiler, so
+    not the usual 32-bit limit.
+    """
+    assert "--zig" in _active_flags()

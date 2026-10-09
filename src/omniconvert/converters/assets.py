@@ -70,27 +70,68 @@ def _cover_pdf(src: Path, out: Path, log_q: Queue) -> Path | None:
     return out
 
 
+#: A cover is page-sized. Anything below this on its shorter edge is a logo,
+#: bullet or signature - regardless of how many bytes it occupies.
+_MIN_COVER_EDGE = 200
+
+#: Decoding every image in a long document is wasteful, so only the largest few
+#: by stored size are inspected. A cover is never among the smallest.
+_MAX_COVER_CANDIDATES = 12
+
+
 def _cover_docx(src: Path, out: Path, log_q: Queue) -> Path | None:
+    """Pick the DOCX's cover by image DIMENSIONS, not by byte size.
+
+    The old rule took the largest file over 5 KB. Byte size is a poor proxy for
+    "is this a cover": a heavily-compressed full-page photo can sit under 5 KB
+    and be skipped entirely, while a noisy 64x64 icon sails past the floor.
+    """
     from PIL import Image
     import io
 
-    min_size = 5 * 1024  # 5 KB — skip icon-sized junk
-
     with zipfile.ZipFile(str(src), "r") as zf:
-        media = [
-            info for info in zf.infolist()
-            if info.filename.startswith("word/media/") and info.file_size > min_size
-        ]
+        media = sorted(
+            (i for i in zf.infolist() if i.filename.startswith("word/media/")),
+            key=lambda i: i.file_size,
+            reverse=True,
+        )
         if not media:
             log_q.put("[!] No media files found in DOCX")
             return None
+        candidates = [(i.filename, zf.read(i.filename))
+                      for i in media[:_MAX_COVER_CANDIDATES]]
 
-        largest = max(media, key=lambda i: i.file_size)
-        data = zf.read(largest.filename)
+    page_sized: tuple[int, Image.Image] | None = None
+    any_image: tuple[int, Image.Image] | None = None
 
-    img = Image.open(io.BytesIO(data))
+    for name, data in candidates:
+        try:
+            img = Image.open(io.BytesIO(data))
+            img.load()
+        except Exception:
+            continue          # EMF/WMF vector art, or simply corrupt
+        area = img.width * img.height
+        if any_image is None or area > any_image[0]:
+            any_image = (area, img)
+        if min(img.size) >= _MIN_COVER_EDGE and (
+            page_sized is None or area > page_sized[0]
+        ):
+            page_sized = (area, img)
+
+    # Fall back to the biggest decodable image rather than giving up: a small
+    # cover is still better than none, and the old rule would have taken it.
+    chosen = page_sized or any_image
+    if chosen is None:
+        log_q.put("[!] No decodable image found in DOCX")
+        return None
+
+    img = chosen[1]
+    if img.mode not in ("RGB", "RGBA", "L", "LA", "P"):
+        img = img.convert("RGB")   # CMYK JPEGs cannot be written as PNG
     img.save(str(out), "PNG")
-    log_q.put(f"[✓] Cover: {img.width}×{img.height} px → {out.name}")
+
+    note = "" if page_sized else "  (small - may not be a real cover)"
+    log_q.put(f"[✓] Cover: {img.width}×{img.height} px → {out.name}{note}")
     return out
 
 

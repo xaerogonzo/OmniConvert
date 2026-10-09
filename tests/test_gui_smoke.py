@@ -388,3 +388,95 @@ class TestSettingsIntegration:
         for forbidden in ("queue", "items", "sources", "status", "error",
                           "selected", "running"):
             assert not any(forbidden in k for k in fields), fields
+
+
+class TestMixedBatchHighFidelity:
+    """High-Fidelity bypasses pandoc only for PDF -> DOCX.
+
+    Treating the mode itself as "pandoc not needed" enabled Convert for mixed
+    batches that then failed partway through, and offering the mode at all was
+    decided from queue[0] alone.
+    """
+
+    def _make(self, tmp_path, *names):
+        out = []
+        for n in names:
+            p = tmp_path / n
+            p.write_bytes(b"x")
+            out.append(p)
+        return out
+
+    def test_mode_is_offered_when_any_row_qualifies(self, app, tmp_path):
+        """Not just the first row: a PDF behind an EPUB still earns the mode."""
+        app._enqueue(self._make(tmp_path, "a.epub", "b.pdf"))
+        app.controls.fmt_var.set("DOCX")
+        app._on_format_change("DOCX")
+        app.update()
+        app.controls.set_preferred_mode("High-Fidelity")
+        app._on_format_change("DOCX")
+        app.update()
+        assert app.controls.mode_var.get() == "High-Fidelity"
+
+    def test_mode_is_withheld_when_no_row_qualifies(self, app, tmp_path):
+        app._enqueue(self._make(tmp_path, "a.epub", "b.txt"))
+        app.controls.fmt_var.set("DOCX")
+        app._on_format_change("DOCX")
+        app.update()
+        assert app.controls.mode_var.get() == "Standard"
+
+    def test_all_pdf_batch_to_docx_skips_pandoc(self, app, tmp_path):
+        """Every file takes pdf2docx, so pandoc genuinely is not needed."""
+        app._enqueue(self._make(tmp_path, "a.pdf", "b.pdf"))
+        app.controls.fmt_var.set("DOCX")
+        app.controls.mode_var.set("High-Fidelity")
+        assert app._needs_pandoc() is False
+
+    def test_mixed_batch_to_docx_still_needs_pandoc(self, app, tmp_path):
+        """The EPUB falls through to the Standard hub and needs pandoc.
+
+        This is the case that used to enable Convert and then fail mid-batch.
+        """
+        app._enqueue(self._make(tmp_path, "a.pdf", "b.epub"))
+        app.controls.fmt_var.set("DOCX")
+        app.controls.mode_var.set("High-Fidelity")
+        assert app._needs_pandoc() is True
+
+    def test_standard_mode_always_needs_pandoc_for_pandoc_targets(self, app, tmp_path):
+        app._enqueue(self._make(tmp_path, "a.pdf"))
+        app.controls.fmt_var.set("DOCX")
+        app.controls.mode_var.set("Standard")
+        assert app._needs_pandoc() is True
+
+    @pytest.mark.parametrize("fmt", ["PDF", "MD"])
+    def test_non_pandoc_targets_never_need_it(self, app, tmp_path, fmt):
+        app._enqueue(self._make(tmp_path, "a.epub"))
+        app.controls.fmt_var.set(fmt)
+        assert app._needs_pandoc() is False
+
+    def test_convert_stays_disabled_for_the_mixed_case_without_pandoc(
+        self, app, tmp_path, monkeypatch
+    ):
+        """The user-visible symptom: the button promised what it could not do."""
+        import omniconvert.app as appmod
+
+        monkeypatch.setattr(appmod, "PANDOC_AVAILABLE", False)
+        app._enqueue(self._make(tmp_path, "a.pdf", "b.epub"))
+        app.controls.fmt_var.set("DOCX")
+        app.controls.mode_var.set("High-Fidelity")
+        app._update_convert_button()
+        app.update()
+        assert app.controls._convert_btn.cget("state") == "disabled"
+
+    def test_convert_is_enabled_for_an_all_pdf_batch_without_pandoc(
+        self, app, tmp_path, monkeypatch
+    ):
+        """...but a batch HiFi fully covers must still be allowed to run."""
+        import omniconvert.app as appmod
+
+        monkeypatch.setattr(appmod, "PANDOC_AVAILABLE", False)
+        app._enqueue(self._make(tmp_path, "a.pdf", "b.pdf"))
+        app.controls.fmt_var.set("DOCX")
+        app.controls.mode_var.set("High-Fidelity")
+        app._update_convert_button()
+        app.update()
+        assert app.controls._convert_btn.cget("state") == "normal"

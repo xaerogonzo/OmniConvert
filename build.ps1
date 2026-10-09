@@ -143,6 +143,14 @@ $guiArgs = @(
     # competes with N-1 other compiler processes for RAM. When it loses, zig cc
     # is OOM-killed silently: no error, no process, and scons waits forever.
     # Two builds wedged exactly there before these flags were added.
+    # Pin the C compiler. Nuitka picks MSVC when it finds one and otherwise
+    # downloads Zig, so the backend silently changed between builds on this
+    # machine - and MSVC cannot compile pymupdf's generated translation unit at
+    # all: "fatal error C1002: compiler is out of heap space in pass 2" on a
+    # 2.25-million-line file, x64-hosted cl included. Zig (clang) handles it,
+    # given the memory guards below. An unpinned backend also means the build is
+    # not reproducible across machines.
+    "--zig",
     "--low-memory",
     "--jobs=4",
     "--lto=no",

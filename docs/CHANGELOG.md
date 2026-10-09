@@ -85,6 +85,20 @@ All notable changes to OmniConvert are documented here.
 - A corrupt saved window geometry could stop the app from starting: CustomTkinter
   parses the string itself and raises `TypeError` from its scaling code, not the
   `tk.TclError` a guard would expect.
+- **Convert was enabled for mixed batches it could not finish.** High-Fidelity
+  skips pandoc only for the pairs it handles — of the pandoc-only targets, just
+  PDF → DOCX — but the button treated "mode is High-Fidelity" as "pandoc not
+  needed" outright. With pandoc absent, a PDF + EPUB batch bound for DOCX
+  converted the PDF and then failed the EPUB. Whether the mode is offered at all
+  is now decided across the whole queue too, rather than from the first row.
+- **DOCX cover selection used byte size, which picked the wrong image.** The old
+  rule took the largest file in `word/media/` over 5 KB. A flat or
+  well-compressed full-page cover falls under that floor and was discarded
+  entirely — a 600×800 cover yielded *no cover at all* — while a noisy 64×64
+  icon cleared it and won outright over a 700×900 cover. Selection is now by
+  image dimensions, falling back to the largest decodable image (and saying so)
+  when nothing is page-sized, so a document whose only art is small still gets a
+  preview. Undecodable EMF/WMF entries are skipped rather than fatal.
 
 ## [0.3.0] — 2026-08-30
 

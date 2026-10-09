@@ -451,16 +451,43 @@ class OmniConvertApp(ctk.CTk, TkinterDnD.DnDWrapper):
     # Format / mode controls
     # ==================================================================
 
+    @staticmethod
+    def _hifi_applies_to(path: Path, fmt: str) -> bool:
+        """Whether High-Fidelity has a dedicated path for this source/target pair.
+
+        Everything else falls through to the Standard hub even when the mode is
+        set to High-Fidelity, which is what `_needs_pandoc` has to account for.
+        """
+        ext = path.suffix.lower()
+        return (ext == ".pdf" and fmt == "docx") or (ext == ".docx" and fmt == "pdf")
+
     def _on_format_change(self, value: str) -> None:
-        """High-Fidelity is only meaningful for the PDF/DOCX pairs."""
+        """High-Fidelity is only meaningful for the PDF/DOCX pairs.
+
+        Decided across the WHOLE queue. Reading `queue[0]` alone offered the
+        mode on the strength of the first row while the rest of a mixed batch
+        quietly took the Standard path.
+        """
         fmt = value.lower()
-        src_ext = self.model[0].path.suffix.lower() if self.model else ""
-        hifi_valid = (
-            (src_ext == ".pdf" and fmt == "docx")
-            or (src_ext == ".docx" and fmt == "pdf")
-        )
+        hifi_valid = any(self._hifi_applies_to(i.path, fmt) for i in self.model)
         self.controls.set_hifi_enabled(hifi_valid)
         self._update_convert_button()
+
+    def _needs_pandoc(self) -> bool:
+        """Whether this run reaches pandoc for at least one queued file.
+
+        High-Fidelity skips the Markdown hub, but only for the pairs it
+        actually handles - of the pandoc-only targets that is just PDF -> DOCX.
+        Treating "mode is High-Fidelity" as "pandoc not needed" enabled Convert
+        for mixed batches that then failed partway: a PDF + EPUB batch bound for
+        DOCX would convert the PDF and fail the EPUB.
+        """
+        fmt = self.controls.fmt_var.get().lower()
+        if fmt not in PANDOC_TARGETS:
+            return False
+        if self.controls.mode_var.get() != "High-Fidelity":
+            return True
+        return any(not self._hifi_applies_to(i.path, fmt) for i in self.model)
 
     def _on_mode_change(self, value: str) -> None:
         self._update_convert_button()
@@ -528,13 +555,9 @@ class OmniConvertApp(ctk.CTk, TkinterDnD.DnDWrapper):
         if self._converting:
             return
 
-        fmt = self.controls.fmt_var.get().lower()
-        needs_pandoc = fmt in PANDOC_TARGETS
-        mode_is_hifi = self.controls.mode_var.get() == "High-Fidelity"
-
         n = len(self.model)
         label = f"Convert Batch ({n})" if n > 1 else "Convert"
-        enabled = n > 0 and (PANDOC_AVAILABLE or not needs_pandoc or mode_is_hifi)
+        enabled = n > 0 and (PANDOC_AVAILABLE or not self._needs_pandoc())
         self.controls.set_convert_button(text=label, enabled=enabled)
 
     def _finish_conversion(self) -> None:

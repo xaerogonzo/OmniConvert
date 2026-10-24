@@ -1,7 +1,7 @@
 # Pinned to the versions this release was built and tested against.
 # Bump deliberately: pymupdf4llm and pymupdf must stay in lockstep.
 customtkinter==5.2.2
-pillow==12.3.0            # 12.3.0 clears 17 advisories; Image.open() here
+pillow==13.0.0            # 12.3.0 clears 17 advisories; Image.open() here
                           # decodes images embedded in user documents
 
 # Input parsers
